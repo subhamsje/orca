@@ -9,7 +9,6 @@ from utils.h3_spatial import haversine_distance_km
 
 class EconomicService:
     def __init__(self):
-        # Live Wholesale Harbor Auction Rates (INR per kg) across major landing centers
         self.harbor_registry = {
             "Malvan Port (Chivla/Dandi)": {
                 "coords": (16.058, 73.465),
@@ -36,7 +35,7 @@ class EconomicService:
                 "prices": {"Bangda": 175, "Surmai": 640, "Tarli": 115, "Poplet": 870, "Rawas": 690, "Vanjaram": 660}
             }
         }
-        self.fuel_cost_per_liter = 98.50  # Diesel/Petrol INR per liter
+        self.fuel_cost_per_liter = 98.50
 
     def optimize_trip_economics(
         self,
@@ -47,13 +46,7 @@ class EconomicService:
         user_lat: float = 16.0215,
         user_lon: float = 73.4821
     ) -> Dict[str, Any]:
-        """
-        Calculates expected net profit across all accessible landing centers:
-        E[Profit] = (Catch Weight * Unit Price) - Total Fuel Cost
-        """
-        # Determine primary species from target fishing ground
         raw_species = target_ground.get("likely_species", ["Bangda (Indian Mackerel)"])[0]
-        # Match species key
         matched_species = "Bangda"
         for key in ["Bangda", "Surmai", "Tarli", "Poplet", "Rawas", "Vanjaram"]:
             if key.lower() in raw_species.lower():
@@ -68,11 +61,9 @@ class EconomicService:
             prices = harbor_data["prices"]
             unit_price = prices.get(matched_species, 200)
 
-            # Distance from target fishing ground / departure location to harbor
             ground_coords = target_ground.get("coordinates", [user_lat, user_lon])
             dist_to_harbor_km = haversine_distance_km(ground_coords[0], ground_coords[1], h_lat, h_lon)
             
-            # Fuel burn rate for additional distance
             extra_fuel_liters = round((dist_to_harbor_km / 15.0) * 3.5, 2)
             total_fuel_liters = round(fuel_liters + extra_fuel_liters, 2)
             total_fuel_cost = round(total_fuel_liters * self.fuel_cost_per_liter, 2)
@@ -92,7 +83,6 @@ class EconomicService:
                 "recommended": False
             })
 
-        # Sort by maximum net profit
         harbor_comparisons.sort(key=lambda x: x["net_profit_inr"], reverse=True)
         harbor_comparisons[0]["recommended"] = True
         best_option = harbor_comparisons[0]
@@ -104,6 +94,35 @@ class EconomicService:
             "target_species": f"{matched_species} ({raw_species})",
             "fuel_cost_total_inr": round(base_fuel_cost, 2),
             "harbor_comparisons": harbor_comparisons
+        }
+
+    def compute_trip_roi(
+        self,
+        vessel_profile: Dict[str, Any],
+        target_species: str = "Bangda (Mackerel)",
+        est_catch_kg: float = 85.0,
+        origin_lat: float = 16.0215,
+        origin_lon: float = 73.4821
+    ) -> Dict[str, Any]:
+        target_ground = {
+            "likely_species": [target_species],
+            "coordinates": [origin_lat, origin_lon]
+        }
+        return self.optimize_trip_economics(
+            target_ground=target_ground,
+            vessel_profile=vessel_profile,
+            est_catch_kg=est_catch_kg,
+            fuel_liters=6.4,
+            user_lat=origin_lat,
+            user_lon=origin_lon
+        )
+
+    def get_all_harbor_wholesale_prices(self) -> Dict[str, Any]:
+        return {
+            "status": "success",
+            "currency": "INR",
+            "harbors": self.harbor_registry,
+            "harbor_registry": self.harbor_registry
         }
 
 economic_service = EconomicService()

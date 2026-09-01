@@ -5,6 +5,7 @@ NMEA hardware sensor ingestion, SAR Monte Carlo drift, CPA collision guard, and 
 """
 
 import os
+import base64
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -17,8 +18,12 @@ from services.dark_fleet_service import dark_fleet_service
 from services.environmental_service import environmental_service
 from services.model_governance_service import model_governance_service
 from services.collision_service import collision_service
+from services.offline_sync_service import offline_sync_service
+from services.insurance_service import insurance_service
+from services.economic_service import economic_service
 from utils.nmea_parser import parse_nmea_sentence
 from utils.engine_twin import calculate_detailed_engine_metrics
+from utils.packet_encoder import pack_telemetry, unpack_telemetry
 from database.repository import db_repository
 
 app = FastAPI(
@@ -89,6 +94,33 @@ class GovernanceOverrideRequest(BaseModel):
     reason: str = Field(..., example="High Swell Surge Warning")
     override_action: str = Field(..., example="HARBOR RECALL")
 
+class OfflineBundleRequest(BaseModel):
+    center_lat: float = Field(..., example=16.0215)
+    center_lon: float = Field(..., example=73.4821)
+    forecast_hours: int = Field(72, example=72)
+
+class InsuranceClaimRequest(BaseModel):
+    vessel_id: str = Field(..., example="IND-MH-07-FRP")
+    policy_id: str = Field(..., example="POL-PRADHAN-MATSYA-884")
+    fisher_name: str = Field(..., example="Subham Koli")
+    latitude: float = Field(..., example=16.0215)
+    longitude: float = Field(..., example=73.4821)
+
+class DarkFleetScanRequest(BaseModel):
+    center_lat: float = Field(..., example=16.0215)
+    center_lon: float = Field(..., example=73.4821)
+    radius_km: float = Field(30.0, example=30.0)
+
+class BinaryPackRequest(BaseModel):
+    latitude: float = Field(..., example=16.0215)
+    longitude: float = Field(..., example=73.4821)
+    risk_score: int = Field(..., example=25)
+    sos_flag: bool = Field(False, example=False)
+    battery_pct: int = Field(95, example=95)
+
+class BinaryUnpackRequest(BaseModel):
+    packet_base64: str = Field(..., example="")
+
 @app.get("/")
 async def root():
     return {
@@ -98,6 +130,10 @@ async def root():
         "demo_mode": True,
         "version": "4.0.0"
     }
+
+@app.get("/api/v1/health")
+async def health_check():
+    return {"status": "healthy", "system": "ORCA 4.0 Universal Marine System"}
 
 @app.post("/api/v1/assess-trip")
 async def assess_trip(req: TripAssessmentRequest):
@@ -149,6 +185,10 @@ async def sighting_update(req: SightingUpdateRequest):
 async def get_dark_fleet_anomalies():
     return dark_fleet_service.scan_sector_anomalies(center_lat=16.0215, center_lon=73.4821)
 
+@app.post("/api/v1/dark-fleet-scan")
+async def scan_dark_fleet(req: DarkFleetScanRequest):
+    return dark_fleet_service.scan_sector_anomalies(center_lat=req.center_lat, center_lon=req.center_lon, radius_km=req.radius_km)
+
 @app.get("/api/v1/environmental/hazards")
 async def get_environmental_hazards():
     return environmental_service.detect_algal_blooms_and_slicks(lat=16.0215, lon=73.4821)
@@ -159,6 +199,33 @@ async def submit_catch(req: CatchReportRequest):
         lat=req.latitude, lon=req.longitude, species=req.species,
         weight_kg=req.weight_kg, net_type=req.net_type, device_id=req.device_id or "DEV-01"
     )
+
+@app.get("/api/v1/closed-loop/summary")
+async def get_closed_loop_summary():
+    return closed_loop_service.get_calibration_summary()
+
+@app.post("/api/v1/offline-bundle")
+async def build_offline_bundle(req: OfflineBundleRequest):
+    return offline_sync_service.build_offline_bundle(center_lat=req.center_lat, center_lon=req.center_lon, forecast_hours=req.forecast_hours)
+
+@app.post("/api/v1/insurance-claim")
+async def verify_insurance(req: InsuranceClaimRequest):
+    return insurance_service.verify_claim(vessel_id=req.vessel_id, policy_id=req.policy_id, fisher_name=req.fisher_name, lat=req.latitude, lon=req.longitude)
+
+@app.post("/api/v1/binary-packet/pack")
+async def pack_binary_packet(req: BinaryPackRequest):
+    packed = pack_telemetry(lat=req.latitude, lon=req.longitude, risk_score=req.risk_score, sos_flag=req.sos_flag, battery_pct=req.battery_pct)
+    b64_val = base64.b64encode(packed).decode("utf-8")
+    return {"hex_packet": packed.hex(), "base64": b64_val, "byte_length": len(packed)}
+
+@app.post("/api/v1/binary-packet/unpack")
+async def unpack_binary_packet(req: BinaryUnpackRequest):
+    raw_bytes = base64.b64decode(req.packet_base64)
+    return unpack_telemetry(raw_bytes)
+
+@app.get("/api/v1/harbor-prices")
+async def get_harbor_prices():
+    return economic_service.get_all_harbor_wholesale_prices()
 
 @app.post("/api/v1/demo/scenario")
 async def set_demo_scenario(payload: dict):
