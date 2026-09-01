@@ -18,7 +18,7 @@ class SafetyService:
         Safety Circuit Breaker Hierarchy:
         1. Official Cyclone Alert -> EXTREME DANGER OVERRIDE (Risk 100)
         2. Physical Floor Breach (Wave > Max Safe Wave for Vessel Length) -> HIGH RISK OVERRIDE (Risk 90)
-        3. Seaworthiness Formula Risk Index (Risk 0-70)
+        3. Seaworthiness Formula Risk Index (Risk 0-100)
         """
         # RULE 1: Official Cyclone Alert Override (NON-NEGOTIABLE)
         if alerts.get("has_active_cyclone_alert"):
@@ -49,15 +49,15 @@ class SafetyService:
 
         # RULE 3: Computed Seaworthiness Risk Index Formula
         raw_risk = (
-            (swh / max_safe_wave) * 40 +
-            (wind_gust / 40.0) * 35 +
-            (10.0 / max(4.0, swell_period)) * 25
+            (swh / max_safe_wave) * 35 +
+            (wind_gust / 50.0) * 30 +
+            (8.0 / max(4.0, swell_period)) * 15
         )
         risk_score = int(min(100, max(0, raw_risk)))
 
-        if risk_score < 35:
+        if risk_score < 40:
             verdict = "SAFE TO VENTURE"
-        elif risk_score < 70:
+        elif risk_score < 75:
             verdict = "MODERATE RISK / CAUTION"
         else:
             verdict = "HIGH RISK / STAY ASHORE"
