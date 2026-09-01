@@ -1,14 +1,19 @@
 """
-Dark-Fleet SAR vs. AIS Anomaly Radar Microservice
+Dark-Fleet SAR vs. AIS Anomaly Radar Agent
 Compares satellite Synthetic Aperture Radar (SAR) vessel detections against Automatic Identification System (AIS) transponders.
 Emits 'ANOMALY_DETECTED' status with explicit multi-day revisit warnings.
+
+Solves Cons of Legacy Tracking Systems:
+- Legacy systems relying on AIS alone are completely blind to illegal trawlers that turn off transponders.
+- ORCA 4.0 DarkFleetAgent matches satellite C-Band SAR radar cross-sections against active AIS feeds in Uber H3 Resolution 7 cells,
+  flagging un-registered stealth vessels without falsely declaring illegal intent.
 """
 
 from typing import Dict, Any, List
 import time
 from utils.h3_spatial import latlon_to_h3, get_surrounding_hexagons
 
-class DarkFleetService:
+class DarkFleetAgent:
     def __init__(self):
         self.mock_sar_detections = [
             {"detection_id": "SAR-20260901-01", "lat": 16.0500, "lon": 73.4200, "timestamp": time.time() - 3600, "radar_cross_section_m2": 45.0, "confidence": 0.92},
@@ -62,4 +67,4 @@ class DarkFleetService:
             "authority_role_required": True
         }
 
-dark_fleet_service = DarkFleetService()
+dark_fleet_service = DarkFleetAgent()
