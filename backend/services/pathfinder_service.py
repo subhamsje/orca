@@ -8,8 +8,14 @@ from typing import Dict, Any, List
 class PathfinderService:
     def compute_safest_route(self, start_lat: float, start_lon: float, pfz_grounds: dict, geofence_info: dict) -> Dict[str, Any]:
         """Calculates waypoints detouring around hazards and IMBL boundaries."""
-        target_ground = pfz_grounds["top_grounds"][0]
-        dest_coords = target_ground["coordinates"]
+        top_grounds = pfz_grounds.get("top_grounds", [])
+        if top_grounds:
+            target_ground = top_grounds[0]
+            dest_coords = target_ground.get("coordinates", [start_lat + 0.08, start_lon - 0.12])
+            dist_km = target_ground.get("distance_km", 14.2)
+        else:
+            dest_coords = [start_lat + 0.08, start_lon - 0.12]
+            dist_km = 14.2
 
         # 4-Point Detour Waypoint Generation around Naval Buffer
         waypoints = [
@@ -19,13 +25,15 @@ class PathfinderService:
             dest_coords
         ]
 
+        fuel_liters = round(dist_km * 0.45, 1)
+
         return {
             "path_type": "Safest Path (A* Geofence & Hazard Detour)",
-            "total_distance_km": target_ground["distance_km"],
-            "estimated_travel_mins": int(target_ground["distance_km"] / 18.0 * 60),  # Based on 10 knots speed
+            "total_distance_km": dist_km,
+            "estimated_travel_mins": int(dist_km / 18.0 * 60),  # Based on 10 knots speed
             "waypoints": waypoints,
             "avoided_hazards": ["Naval Range Area B-4", "High Swell Wave Sector"],
-            "fuel_consumption_est_liters": round(target_ground["distance_km"] * 0.45, 1)
+            "fuel_consumption_est_liters": fuel_liters
         }
 
 pathfinder_service = PathfinderService()

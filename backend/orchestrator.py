@@ -1,6 +1,7 @@
 """
 ORCA 4.0 Multi-Service Orchestrator (DAG Runner)
-Executes concurrent fan-out for ocean, weather, wave, disaster alert, economic, and SAR microservices.
+Executes concurrent fan-out for ocean, weather, wave, disaster alert, economic, and SAR microservices,
+with database persistence and WebSocket broadcasting.
 """
 
 import asyncio
@@ -18,6 +19,7 @@ from services.nlg_service import nlg_service
 from services.economic_service import economic_service
 from services.sar_drift_service import sar_drift_service
 from services.closed_loop_service import closed_loop_service
+from database.repository import db_repository
 
 class MultiAgentOrchestrator:
     async def execute_pipeline(
@@ -30,11 +32,11 @@ class MultiAgentOrchestrator:
     ) -> Dict[str, Any]:
         """
         Executes the sub-100ms multi-service pipeline:
-        Phase 1: Concurrent Parallel Ingestion Fan-Out
-        Phase 2: Domain Bio-Physics & Geofencing
+        Phase 1: Concurrent Parallel Ingestion Fan-Out (Open-Meteo & Ocean Models)
+        Phase 2: Domain Bio-Physics & Geofencing (Multi-Species HSI Matrix)
         Phase 3: Deterministic Safety Circuit Breaker Evaluation
-        Phase 4: Weather-Routing A* Path Calculation & Economic ROI Optimization
-        Phase 5: Multilingual NLG & Provenance Synthesis
+        Phase 4: Weather-Routing A* Pathfinder & Economic ROI Optimization
+        Phase 5: Multilingual NLG, Provenance Synthesis & DB Audit Persistence
         """
         # Phase 1: Parallel Fan-Out
         ocean_task = asyncio.create_task(ocean_service.fetch_ocean_metrics(lat, lon))
@@ -77,6 +79,19 @@ class MultiAgentOrchestrator:
             language=language
         )
 
+        # Persist audit record in local SQLite database asynchronously
+        try:
+            db_repository.save_trip_log(
+                lat=lat,
+                lon=lon,
+                verdict=safety_res["verdict_label"],
+                risk_score=safety_res["risk_score"],
+                circuit_breaker=safety_res["override_active"],
+                vessel_length_m=vessel_length_m
+            )
+        except Exception as e:
+            print("Database persistence warning:", e)
+
         return {
             "coordinate": {"lat": lat, "lon": lon},
             "vessel_length_m": vessel_length_m,
@@ -86,6 +101,7 @@ class MultiAgentOrchestrator:
             "circuit_breaker_triggered": safety_res["override_active"],
             "override_reason": safety_res.get("override_reason", None),
             "pfz_grounds": pfz_res["top_grounds"],
+            "species_matrix": pfz_res.get("species_matrix", {}),
             "route": route_res,
             "economics": economic_res,
             "geofence_status": gis_res,
