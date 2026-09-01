@@ -1,5 +1,6 @@
 """
-Database Engine & Async SQLite Connection Setup
+Database Engine & Async SQLite Connection Setup with Write-Ahead Logging (WAL) Mode
+Enables concurrent reads while writing, PRAGMA optimizations, and busy timeout handlers for high throughput.
 """
 
 import os
@@ -9,9 +10,18 @@ from typing import Dict, Any, List
 DB_FILE = os.path.join(os.path.dirname(__file__), "orca_local.db")
 
 def get_db_connection():
-    """Returns a connection to the local SQLite database."""
-    conn = sqlite3.connect(DB_FILE)
+    """
+    Returns an optimized connection to the local SQLite database.
+    WAL Mode allows concurrent reader connections without blocking writers.
+    """
+    conn = sqlite3.connect(DB_FILE, timeout=10.0)
     conn.row_factory = sqlite3.Row
+    # High-Performance PRAGMAs
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL;")
+    cursor.execute("PRAGMA synchronous=NORMAL;")
+    cursor.execute("PRAGMA cache_size=-64000;")  # 64 MB RAM cache
+    cursor.execute("PRAGMA busy_timeout=5000;")   # 5 sec busy timeout retry
     return conn
 
 def init_db():
