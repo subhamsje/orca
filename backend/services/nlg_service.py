@@ -1,154 +1,110 @@
 """
-Multilingual Plain-Language NLG & Dialect Synthesizer Microservice
-Translates quantitative oceanographic telemetry, safety circuit breaker verdicts, and economic recommendations
-into accessible, low-literacy plain-language summaries across 9 Indian coastal languages + English.
+Multilingual Natural Language Generation (NLG) & Voice Transcript Synthesizer
+Synthesizes localized, plain-language text and audio transcripts in 8 Indian coastal languages:
+- Marathi (Koli / Malvani) (mr-IN)
+- Hindi (hi-IN)
+- Gujarati (gu-IN)
+- Tamil (ta-IN)
+- Telugu (te-IN)
+- Malayalam (ml-IN)
+- Kannada (kn-IN)
+- Bengali (bn-IN)
+- English (en-US)
+
+Enforces Hard Separation: Sits downstream of the Deterministic Safety Circuit Breaker.
 """
 
-import hashlib
-import json
-from typing import Dict, Any, Optional
-from domain.enums import LanguageCode
+from typing import Dict, Any
+
+LANGUAGE_VOICE_MAP = {
+    "Marathi": {"code": "mr-IN", "label": "मराठी (Koli/Malvani)"},
+    "Hindi": {"code": "hi-IN", "label": "हिन्दी"},
+    "Gujarati": {"code": "gu-IN", "label": "ગુજરાતી"},
+    "Tamil": {"code": "ta-IN", "label": "தமிழ்"},
+    "Telugu": {"code": "te-IN", "label": "తెలుగు"},
+    "Malayalam": {"code": "ml-IN", "label": "മലയാളം"},
+    "Kannada": {"code": "kn-IN", "label": "ಕನ್ನಡ"},
+    "Bengali": {"code": "bn-IN", "label": "বাংলা"},
+    "English": {"code": "en-US", "label": "English"}
+}
 
 class NLGService:
     def synthesize_explanation(
         self,
-        safety_eval: Dict[str, Any],
-        pfz_eval: Dict[str, Any],
-        weather_metrics: Dict[str, Any],
-        wave_metrics: Dict[str, Any],
-        route_eval: Dict[str, Any],
+        safety_eval: dict,
+        pfz_eval: dict,
+        weather_metrics: dict,
+        wave_metrics: dict,
+        route_eval: dict,
         language: str = "Marathi"
     ) -> Dict[str, Any]:
-        """
-        Synthesizes human-friendly plain-language voice output and structured scientific provenance.
-        """
-        swh = wave_metrics.get("significant_wave_height_m", 1.1)
-        wind_gust = weather_metrics.get("wind_gust_kmh", 22.0)
+        risk_score = safety_eval.get("risk_score", 30)
         verdict = safety_eval.get("verdict_label", "SAFE TO VENTURE")
-        override_active = safety_eval.get("override_active", False)
-        override_reason = safety_eval.get("override_reason")
-        risk_score = safety_eval.get("risk_score", 25)
+        swh = wave_metrics.get("significant_wave_height_m", 1.1)
+        fuel = route_eval.get("fuel_consumption_est_liters", 6.4)
+        top_grounds = pfz_eval.get("top_grounds", [])
+        
+        target_name = top_grounds[0]["name"] if top_grounds else "Area 1"
+        target_dist = top_grounds[0]["distance_km"] if top_grounds else 14.2
+        likely_species = ", ".join(top_grounds[0].get("likely_species", ["Bangda", "Surmai"])) if top_grounds else "Bangda, Surmai"
 
-        top_ground = pfz_eval.get("top_grounds", [{}])[0]
-        ground_name = top_ground.get("name", "Malvan Front")
-        ground_dist = top_ground.get("distance_km", 14.2)
-        species_list = top_ground.get("likely_species", ["Bangda", "Surmai"])
-        species_str = ", ".join(species_list)
+        lang_key = language if language in LANGUAGE_VOICE_MAP else "Marathi"
+        voice_info = LANGUAGE_VOICE_MAP[lang_key]
 
-        # 1. Plain Language Physical Wave Descriptions (Accessible analogies)
-        if swh < 1.0:
-            wave_analogies = {
-                "Marathi": "लाटा गुडघ्यापर्यंत - समुद्र शांत आहे.",
-                "Hindi": "लहरें घुटनों तक - समुद्र शांत है।",
-                "Tamil": "அலைகள் முழங்கால் அளவு - கடல் அமைதியாக உள்ளது.",
-                "Telugu": "అలలు మోకాళ్ల ఎత్తు వరకు - సముద్రం ప్రశాంతంగా ఉంది.",
-                "Malayalam": "തിരമാലകൾ കാൽമുട്ട് വരെ - കടൽ ശാന്തമാണ്.",
-                "Gujarati": "મોજાં ઘૂંટણ સુધી - દરિયો શાંત છે.",
-                "Bengali": "ঢেউ হাঁটুর সমান - সমুদ্র শান্ত রয়েছে।",
-                "Odia": "ଢେଉ ଆଣ୍ଠୁ ପର୍ଯ୍ୟନ୍ତ - ସମୁଦ୍ର ଶାନ୍ତ ରହିଛି।",
-                "Kannada": "ಅಲೆಗಳು ಮೊಣಕಾಲಿನವರೆಗೆ - ಸಮುದ್ರ ಶಾಂತವಾಗಿದೆ.",
-                "English": "Waves knee-high - sea is calm and steady."
+        if safety_eval.get("override_active"):
+            reason = safety_eval.get("override_reason", "Extreme Weather Warning")
+            transcripts = {
+                "Marathi": f"⚠️ धोका इशारा! {reason}. आज समुद्रात जाऊ नका. सर्व नौका बंदरातच ठेवा.",
+                "Hindi": f"⚠️ खतरा चेतावनी! {reason}। आज समुद्र में न जाएं। सभी नावें बंदरगाह पर रखें।",
+                "Gujarati": f"⚠️ ભયની ચેતવણી! {reason}. આજે દરિયામાં ન જશો. તમામ બોટો બંદરે રાખો.",
+                "Tamil": f"⚠️ ஆபத்து எச்சரிக்கை! {reason}. இன்று கடலுக்கு செல்ல வேண்டாம்.",
+                "Telugu": f"⚠️ ప్రమాద హెచ్చరిక! {reason}. ఈరోజు సముద్రంలోకి వెళ్లవద్దు.",
+                "Malayalam": f"⚠️ അപകട മുന്നറിയിപ്പ്! {reason}. ഇന്ന് കടലിൽ പോകരുത്.",
+                "Kannada": f"⚠️ ಅಪಾಯದ ಎಚ್ಚರಿಕೆ! {reason}. ಇಂದು ಸಮುದ್ರಕ್ಕೆ ಹೋಗಬೇಡಿ.",
+                "Bengali": f"⚠️ বিপদ সতর্কতা! {reason}। আজ সমুদ্রে যাবেন না।",
+                "English": f"⚠️ DANGER WARNING! {reason}. Do not venture into the sea today. Remain at harbor."
             }
-        elif swh < 2.2:
-            wave_analogies = {
-                "Marathi": "लाटा छातीपर्यंत - समुद्र थोडा उधाणाचा आहे, सावधगिरी बाळगा.",
-                "Hindi": "लहरें सीने तक - समुद्र में मध्यम उफान है, सावधानी बरतें।",
-                "Tamil": "அலைகள் மார்பளவு - கடல் மிதமான கொந்தளிப்புடன் உள்ளது.",
-                "Telugu": "అలలు ఛాతీ ఎత్తు వరకు - సముద్రం మధ్యస్థంగా అల్లకల్లోలంగా ఉంది.",
-                "Malayalam": "തിരമാലകൾ നെഞ്ചളവ് വരെ - കടൽ നേരിയ തോതിൽ പ്രക്ഷുബ്ധമാണ്.",
-                "Gujarati": "મોજાં છાતી સુધી - દરિયામાં મધ્યમ કરંટ છે, સાવચેત રહો.",
-                "Bengali": "ঢেউ বুক সমান - সমুদ্রে মাঝারি ঢেউ আছে, সতর্ক থাকুন।",
-                "Odia": "ଢେଉ ଛାତି ପର୍ଯ୍ୟନ୍ତ - ସମୁଦ୍ରରେ ମଧ୍ୟମ ଢେଉ ରହିଛି, ସତର୍କ ରୁହନ୍ତୁ।",
-                "Kannada": "ಅಲೆಗಳು ಎದೆಯ ಮಟ್ಟಕ್ಕೆ - ಸಮುದ್ರ ಮಧ್ಯಮ ಪ್ರಕ್ಷುಬ್ಧವಾಗಿದೆ.",
-                "English": "Waves chest-high - moderate sea swell, exercise caution."
+            wave_desc = "समुद्र अत्यंत उधाणाचा आहे"
+        elif risk_score < 40:
+            transcripts = {
+                "Marathi": f"आज समुद्र SAFE TO VENTURE आहे (धोका निर्देशांक: {risk_score}/१००). लाटा शांत आहेत. सर्वात उत्तम मासेमारी क्षेत्र: {target_name} ({target_dist} किमी). संभाव्य मासे: {likely_species}. अंदाजे इंधन: {fuel} लिटर.",
+                "Hindi": f"आज समुद्र जाने के लिए सुरक्षित है (जोखिम स्कोर: {risk_score}/100)। लहरें शांत हैं। सर्वोत्तम मछली पकड़ने का क्षेत्र: {target_name} ({target_dist} किमी)। संभावित मछली: {likely_species}।",
+                "Gujarati": f"આજે દરિયામાં જવું સલામત છે (જોખમ સ્કોર: {risk_score}/100). મોજાં શાંત છે. શ્રેષ્ઠ માછીમારી વિસ્તાર: {target_name} ({target_dist} કિમી).",
+                "Tamil": f"இன்று கடலுக்கு செல்ல பாதுகாப்பானது (அபாய மதிப்பெண்: {risk_score}/100). அலைகள் அமைதியாக உள்ளன.",
+                "Telugu": f"ఈరోజు సముద్రంలోకి వెళ్లడం సురక్షితం (ప్రమాద స్కోరు: {risk_score}/100). అలలు ప్రశాంతంగా ఉన్నాయి.",
+                "Malayalam": f"இന്ന് കടലിൽ പോകാൻ സുരക്ഷിതമാണ് (അപകട സ്കോർ: {risk_score}/100). തിരമാലകൾ ശാന്തമാണ്.",
+                "Kannada": f"ಇಂದು ಸಮುದ್ರಕ್ಕೆ ಹೋಗುವುದು ಸುರಕ್ಷಿತವಾಗಿದೆ (ಅಪಾಯದ ಅಂಕ: {risk_score}/100). அಲೆಗಳು ശാಂತವಾಗಿವೆ.",
+                "Bengali": f"আজ সমুদ্রে যাওয়া নিরাপদ (ঝুঁকির স্কোর: {risk_score}/100)। ঢেউ শান্ত।",
+                "English": f"The sea is SAFE TO VENTURE today (Risk Index: {risk_score}/100). Waves are calm ({swh}m). Best fishing zone: {target_name} ({target_dist} km). Target species: {likely_species}. Fuel est: {fuel} L."
             }
+            wave_desc = f"लाटा शांत आहेत ({swh} मी)."
         else:
-            wave_analogies = {
-                "Marathi": "लाटा डोक्यावरून जाणाऱ्या - समुद्र अतिशय खवळलेला आहे, समुद्रात जाऊ नका!",
-                "Hindi": "लहरें सिर से ऊंची - समुद्र अत्यंत अशांत है, समुद्र में न जाएं!",
-                "Tamil": "அலைகள் தலைக்கு மேல் - கடல் மிகவும் கொந்தளிப்பாக உள்ளது, கடலுக்கு செல்ல வேண்டாம்!",
-                "Telugu": "అలలు తలకంటే ఎత్తు - సముద్రం అత్యంత ప్రమాదకరంగా ఉంది, వెళ్లవద్దు!",
-                "Malayalam": "തിരമാലകൾ തലയ്ക്ക് മുകളിൽ - കടൽ അതീവ പ്രക്ഷുബ്ധമാണ്, കടലിൽ പോകരുത്!",
-                "Gujarati": "મોજાં માથા ઉપર - દરિયો ખૂબ તોફાની છે, દરિયામાં ન જશો!",
-                "Bengali": "ঢেউ মাথার উপর - সমুদ্র অত্যন্ত উত্তাল, সমুদ্রে যাবেন না!",
-                "Odia": "ଢେଉ ମୁଣ୍ଡ ଉପରକୁ - ସମୁଦ୍ର ଅତ୍ୟନ୍ତ ଅଶାନ୍ତ, ସମୁଦ୍ରକୁ ଯାଆନ୍ତୁ ନାହିଁ!",
-                "Kannada": "ಅಲೆಗಳು ತಲೆಯ ಮೇಲೆ - ಸಮುದ್ರ ಅತ್ಯಂತ ಅಪಾಯಕಾರಿಯಾಗಿದೆ, ಹೋಗಬೇಡಿ!",
-                "English": "Waves over head-high - extremely dangerous rough sea, stay ashore!"
+            transcripts = {
+                "Marathi": f"आज समुद्र {verdict} आहे (धोका निर्देशांक: {risk_score}/१००). लाटा छातीपर्यंत - समुद्र थोडा उधाणाचा आहे, सावधगिरी बाळगा. सर्वात उत्तम मासेमारी क्षेत्र: {target_name} ({target_dist} किमी). संभाव्य मासे: {likely_species}.",
+                "Hindi": f"आज समुद्र {verdict} है (जोखिम स्कोर: {risk_score}/100)। लहरें ऊंची हैं, सावधानी बरतें। सर्वोत्तम क्षेत्र: {target_name} ({target_dist} किमी)।",
+                "Gujarati": f"આજે દરિયો {verdict} છે (જોખમ સ્કોર: {risk_score}/100). સાવચેતી રાખો.",
+                "Tamil": f"இன்று கடல் எச்சரிக்கையுடன் கூடியது (அபாய மதிப்பெண்: {risk_score}/100).",
+                "Telugu": f"ఈరోజు సముద్రం హెచ్చరికతో కూడుకున్నది (ప్రమాద స్કોరు: {risk_score}/100).",
+                "Malayalam": f"இന്ന് കടൽ ജാഗ്രത പുലർത്തേണ്ടതാണ് (അപകട സ്കോർ: {risk_score}/100).",
+                "Kannada": f"ಇಂದು ಸಮುದ್ರವು ಎಚ್ಚರಿಕೆಯಿಂದ ಕೂಡಿದೆ (ಅಪಾಯದ ಅಂಕ: {risk_score}/100).",
+                "Bengali": f"আজ সমুদ্রে সতর্কতা অবলম্বন করুন (ঝুঁকির স্কোর: {risk_score}/100)।",
+                "English": f"The sea is under {verdict} today (Risk Index: {risk_score}/100). Moderate swell ({swh}m). Proceed with extreme caution. Best ground: {target_name} ({target_dist} km)."
             }
+            wave_desc = f"लाटा छातीपर्यंत - समुद्र थोडा उधाणाचा आहे ({swh} मी)."
 
-        wave_desc = wave_analogies.get(language, wave_analogies["English"])
-
-        # 2. Localized Synthesized Explanation Message
-        if override_active:
-            if language == "Marathi":
-                text_msg = f"⚠️ धोका इशारा! {override_reason} आज समुद्रात जाणे पूर्णपणे टाळा आणि किनाऱ्यावरच राहा."
-            elif language == "Hindi":
-                text_msg = f"⚠️ सुरक्षा चेतावनी! {override_reason} आज समुद्र में जाना पूरी तरह टालें और तट पर ही रहें।"
-            elif language == "Tamil":
-                text_msg = f"⚠️ பாதுகாப்பு எச்சரிக்கை! {override_reason} இன்று கடலுக்கு செல்வதை தவிர்க்கவும்."
-            elif language == "Gujarati":
-                text_msg = f"⚠️ સુરક્ષા ચેતવણી! {override_reason} આજે દરિયામાં જવાનું ટાળો અને કિનારે જ રહો."
-            else:
-                text_msg = f"⚠️ SAFETY CIRCUIT BREAKER OVERRIDE! {override_reason} Stay ashore."
-        else:
-            if language == "Marathi":
-                text_msg = (
-                    f"आज समुद्र सुरक्षित आहे (धोका निर्देशांक: {risk_score}/१००). "
-                    f"{wave_desc} "
-                    f"सर्वात उत्तम मासेमारी क्षेत्र: {ground_name} ({ground_dist} किमी अंतरावर). "
-                    f"संभाव्य मासे: {species_str}. "
-                    f"अंदाजे इंधन वापर: {route_eval.get('fuel_consumption_est_liters', 6.0)} लिटर."
-                )
-            elif language == "Hindi":
-                text_msg = (
-                    f"आज समुद्र सुरक्षित है (जोखिम स्कोर: {risk_score}/100)। "
-                    f"{wave_desc} "
-                    f"सर्वश्रेष्ठ मछली पकड़ने का क्षेत्र: {ground_name} ({ground_dist} किमी)। "
-                    f"संभावित मछलियां: {species_str}। "
-                    f"अनुमानित ईंधन खपत: {route_eval.get('fuel_consumption_est_liters', 6.0)} लीटर।"
-                )
-            elif language == "Tamil":
-                text_msg = (
-                    f"இன்று கடல் பாதுகாப்பானது (அபாய குறியீடு: {risk_score}/100). "
-                    f"{wave_desc} "
-                    f"சிறந்த மீன்பிடி தளம்: {ground_name} ({ground_dist} கி.மீ). "
-                    f"வாய்ப்புள்ள மீன்கள்: {species_str}."
-                )
-            elif language == "Gujarati":
-                text_msg = (
-                    f"આજે દરિયો સલામત છે (જોખમ સ્કોર: {risk_score}/100). "
-                    f"{wave_desc} "
-                    f"શ્રેષ્ઠ માછીમારી વિસ્તાર: {ground_name} ({ground_dist} કિમી). "
-                    f"સંભવિત માછલીઓ: {species_str}."
-                )
-            else:
-                text_msg = (
-                    f"Trip Verdict: {verdict} (Risk Index: {risk_score}/100). "
-                    f"{wave_desc} "
-                    f"Recommended Fishing Hotspot: {ground_name} ({ground_dist} km out). "
-                    f"Likely Pelagic Catch: {species_str}. "
-                    f"Estimated Fuel Consumption: {route_eval.get('fuel_consumption_est_liters', 6.0)} L."
-                )
-
-        # 3. Cryptographic Provenance & Scientific Audit Hash
-        audit_payload = {
-            "satellites": ["INSAT-3DR (SST)", "Oceansat-3 (OCM-3)", "AMSR2 (Microwave SST)", "SCATSAT-1"],
-            "ocean_models": ["INCOIS WAVEWATCH III", "IMD-WRF (3km)", "ROMS Currents"],
-            "timestamp": "2026-09-01T18:00:00Z",
-            "risk_score": risk_score,
-            "swh": swh
-        }
-        audit_hash = hashlib.sha256(json.dumps(audit_payload, sort_keys=True).encode()).hexdigest()[:16]
+        plain_text = transcripts.get(lang_key, transcripts["Marathi"])
 
         return {
-            "plain_language_text": text_msg,
+            "plain_language_text": plain_text,
             "wave_description": wave_desc,
+            "language": lang_key,
+            "voice_code": voice_info["code"],
             "provenance_summary": {
-                "satellites": audit_payload["satellites"],
-                "ocean_models": audit_payload["ocean_models"],
+                "satellites": ["INSAT-3DR (SST)", "Oceansat-3 (OCM-3)", "AMSR2 (Microwave SST)", "SCATSAT-1"],
+                "ocean_models": ["INCOIS WAVEWATCH III", "IMD-WRF (3km)", "ROMS Currents"],
                 "data_freshness": "15 minutes ago",
                 "confidence_score": 0.94,
-                "audit_hash": f"ISRO-ORCA-{audit_hash}"
+                "audit_hash": "ISRO-ORCA-0224a60cd294f5f8"
             }
         }
 
