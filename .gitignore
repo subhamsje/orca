@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.env
+
+# Node / React
+node_modules/
+dist/
+dist-ssr/
+*.local
+.pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE & OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build & Logs
+*.log
+datasets/*.nc
