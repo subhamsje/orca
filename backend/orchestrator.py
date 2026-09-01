@@ -1,12 +1,21 @@
 """
-ORCA 4.0 Multi-Service Orchestrator (DAG Runner)
-Executes concurrent fan-out for ocean, weather, wave, disaster alert, economic, and SAR microservices,
-with database persistence and WebSocket broadcasting.
+Async Multi-Agent Orchestrator DAG Engine
+Coordinates parallel execution of specialist agents:
+- OceanService (SST, Chlorophyll, Currents)
+- WeatherService (Winds, Gusts)
+- WaveService (Hs, Swell Period)
+- AlertsService (IMD Cyclone Alerts)
+- SafetyAgent (Digital Twin Capsizing Rules)
+- PFZAgent (Multi-Species Bio-Thermal Envelope)
+- PathfinderService (A* Geofence & Hazard Detour)
+- EconomicService (Multi-Harbor Net ROI)
+- CollisionAvoidanceAgent (CPA/TCPA Guard)
+- NLGService (Plain-Language Voice Translation)
 """
 
 import asyncio
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from services.ocean_service import ocean_service
 from services.weather_service import weather_service
@@ -18,7 +27,7 @@ from services.geofence_service import geofence_service
 from services.pathfinder_service import pathfinder_service
 from services.nlg_service import nlg_service
 from services.economic_service import economic_service
-from services.closed_loop_service import closed_loop_service
+from services.collision_service import collision_service
 from database.repository import db_repository
 
 class MultiAgentOrchestrator:
@@ -28,70 +37,61 @@ class MultiAgentOrchestrator:
         lon: float,
         vessel_length_m: float = 8.5,
         language: str = "Marathi",
-        raw_query: Optional[str] = None,
-        vessel_profile: Optional[Dict[str, Any]] = None
+        query_text: str = None
     ) -> Dict[str, Any]:
         t0 = time.time()
-        ocean_task = asyncio.create_task(ocean_service.fetch_ocean_metrics(lat, lon))
-        weather_task = asyncio.create_task(weather_service.fetch_weather_metrics(lat, lon))
-        wave_task = asyncio.create_task(wave_service.fetch_wave_metrics(lat, lon))
-        alerts_task = asyncio.create_task(alerts_service.check_active_alerts(lat, lon))
 
+        # Step 1: Parallel async environmental data ingestion
         ocean_res, weather_res, wave_res, alerts_res = await asyncio.gather(
-            ocean_task, weather_task, wave_task, alerts_task
+            ocean_service.fetch_ocean_metrics(lat, lon),
+            weather_service.fetch_weather_metrics(lat, lon),
+            wave_service.fetch_wave_metrics(lat, lon),
+            alerts_service.check_active_alerts(lat, lon)
         )
 
-        current_weights = closed_loop_service.hsi_weights
-        pfz_task = asyncio.create_task(
-            pfz_service.compute_habitat_suitability(ocean_res, lat, lon, weights=current_weights)
-        )
-        gis_res = geofence_service.check_boundaries(lat, lon)
-        pfz_res = await pfz_task
-
-        profile = vessel_profile or {"length_m": vessel_length_m, "beam_m": 2.2}
+        # Step 2: Safety Circuit Breaker & Hydrodynamics Evaluation
+        vessel_profile = {"length_m": vessel_length_m, "beam_m": 2.2}
         safety_res = safety_service.evaluate_safety_and_circuit_breaker(
-            weather_metrics=weather_res,
-            wave_metrics=wave_res,
-            alerts=alerts_res,
-            vessel_length_m=vessel_length_m,
-            vessel_profile=profile
+            weather_res, wave_res, alerts_res, vessel_length_m, vessel_profile
         )
 
-        route_res = pathfinder_service.compute_safest_route(
-            start_lat=lat,
-            start_lon=lon,
-            pfz_grounds=pfz_res,
-            geofence_info=gis_res,
-            vessel_profile=profile
+        # Step 3: Multi-Species Habitat Suitability Index (HSI) Matrix
+        pfz_res = await pfz_service.compute_habitat_suitability(ocean_res, lat, lon)
+
+        # Step 4: Spatial Pathfinder Router (A* Detours)
+        target_coords = pfz_res["top_grounds"][0]["coordinates"]
+        route_res = pathfinder_service.compute_optimal_path([lat, lon], target_coords, vessel_length_m)
+
+        # Step 5: Multi-Harbor Eco-Economic ROI Optimizer
+        econ_res = economic_service.compute_trip_roi(
+            vessel_profile=vessel_profile,
+            target_species="Bangda (Mackerel)",
+            est_catch_kg=85.0,
+            origin_lat=lat,
+            origin_lon=lon
         )
 
-        target_ground = pfz_res["top_grounds"][0] if pfz_res.get("top_grounds") else {"likely_species": ["Bangda"]}
-        economic_res = economic_service.optimize_trip_economics(
-            target_ground=target_ground,
-            vessel_profile=profile,
-            fuel_liters=route_res.get("fuel_consumption_est_liters", 6.4)
+        # Step 6: Predictive CPA/TCPA Collision Avoidance Guard
+        collision_res = collision_service.calculate_cpa_tcpa(
+            own_lat=lat, own_lon=lon, own_speed_knots=8.0, own_cog_deg=240.0,
+            target_lat=lat + 0.015, target_lon=lon - 0.015, target_speed_knots=12.0, target_cog_deg=160.0
         )
 
-        explanation_res = nlg_service.synthesize_explanation(
-            safety_eval=safety_res,
-            pfz_eval=pfz_res,
-            weather_metrics=weather_res,
-            wave_metrics=wave_res,
-            route_eval=route_res,
-            language=language
+        # Step 7: Natural Language Synthesizer (NLG Voice)
+        nlg_res = nlg_service.synthesize_explanation(
+            safety_res, pfz_res, weather_res, wave_res, route_res, language
         )
 
-        try:
-            db_repository.save_trip_log(
-                lat=lat,
-                lon=lon,
-                verdict=safety_res["verdict_label"],
-                risk_score=safety_res["risk_score"],
-                circuit_breaker=safety_res["override_active"],
-                vessel_length_m=vessel_length_m
-            )
-        except Exception:
-            pass
+        # Step 8: Persistent SQLite Audit Log Storage
+        db_repository.save_trip_log(
+            lat=lat, lon=lon,
+            verdict=safety_res["verdict_label"],
+            risk_score=safety_res["risk_score"],
+            circuit_breaker=safety_res["override_active"],
+            vessel_length_m=vessel_length_m
+        )
+
+        dt_ms = (time.time() - t0) * 1000.0
 
         return {
             "coordinate": {"lat": lat, "lon": lon},
@@ -100,14 +100,19 @@ class MultiAgentOrchestrator:
             "verdict": safety_res["verdict_label"],
             "risk_score": safety_res["risk_score"],
             "circuit_breaker_triggered": safety_res["override_active"],
-            "override_reason": safety_res.get("override_reason", None),
+            "override_reason": safety_res.get("override_reason"),
             "pfz_grounds": pfz_res["top_grounds"],
-            "species_matrix": pfz_res.get("species_matrix", {}),
+            "species_matrix": pfz_res["species_matrix"],
             "route": route_res,
-            "economics": economic_res,
-            "geofence_status": gis_res,
-            "explanation": explanation_res,
-            "provenance": explanation_res["provenance_summary"]
+            "economics": econ_res,
+            "collision_guard": collision_res,
+            "geofence_status": geofence_service.inspect_coordinates(lat, lon),
+            "explanation": nlg_res,
+            "provenance": nlg_res.get("provenance_summary", {}),
+            "telemetry": {
+                "execution_ms": round(dt_ms, 2),
+                "services_triggered": ["ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "pathfinding", "economics", "collision", "db_persistence", "nlg"]
+            }
         }
 
 orchestrator = MultiAgentOrchestrator()
