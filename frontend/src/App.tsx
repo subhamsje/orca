@@ -8,6 +8,7 @@ import { SystemDiagnostics } from './components/SystemDiagnostics';
 import { VesselProfileModal } from './components/VesselProfileModal';
 import { TripAssessmentResponse, VesselProfile } from './types';
 import { fetchTripAssessment } from './utils/api';
+import { INDIAN_HARBORS, HarborLocation } from './utils/harbors';
 import { ShieldCheck, Compass, Mic, Radio, Activity } from 'lucide-react';
 
 export function App() {
@@ -17,6 +18,8 @@ export function App() {
   const [isVesselModalOpen, setIsVesselModalOpen] = useState<boolean>(false);
   const [assessment, setAssessment] = useState<TripAssessmentResponse | null>(null);
 
+  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(INDIAN_HARBORS[0]); // Panaji, Goa default
+
   const [vesselProfile, setVesselProfile] = useState<VesselProfile>({
     vessel_id: 'IND-MH-04-892',
     vessel_name: 'Malvan Craft-01',
@@ -25,17 +28,13 @@ export function App() {
     fuel_capacity_l: 60,
   });
 
-  const [coords, setCoords] = useState<{ lat: number; lon: number }>({
-    lat: 16.0215,
-    lon: 73.4821,
-  });
-
-  const loadAssessment = async (overrideScenario?: string) => {
+  const loadAssessment = async (overrideScenario?: string, targetHarbor?: HarborLocation) => {
+    const harbor = targetHarbor || selectedHarbor;
     const urlParams = new URLSearchParams(window.location.search);
     const demoMode = overrideScenario || urlParams.get('demo');
 
-    let targetLat = coords.lat;
-    let targetLon = coords.lon;
+    let targetLat = harbor.lat;
+    let targetLon = harbor.lon;
 
     if (demoMode === 'safe') {
       targetLat = 15.2993; // Goa Harbor
@@ -79,12 +78,17 @@ export function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [language, vesselProfile]);
+  }, [language, vesselProfile, selectedHarbor]);
+
+  const handleHarborSelect = (harbor: HarborLocation) => {
+    setSelectedHarbor(harbor);
+    loadAssessment(undefined, harbor);
+  };
 
   const handleQuerySubmit = async (queryText: string) => {
     const data = await fetchTripAssessment(
-      coords.lat,
-      coords.lon,
+      selectedHarbor.lat,
+      selectedHarbor.lon,
       vesselProfile.length_m,
       language,
       queryText
@@ -102,6 +106,8 @@ export function App() {
         isOffline={isOffline}
         isDemoMode={true}
         onSelectDemoPreset={(scenario) => loadAssessment(scenario)}
+        selectedHarbor={selectedHarbor}
+        onSelectHarbor={handleHarborSelect}
       />
 
       <main className="flex-1 max-w-5xl w-full mx-auto">
@@ -109,10 +115,15 @@ export function App() {
           <TodayView
             assessment={assessment}
             language={language}
-            onRefreshTrip={loadAssessment}
+            onRefreshTrip={() => loadAssessment()}
           />
         )}
-        {activeTab === 'chart' && <LivingChart assessment={assessment} />}
+        {activeTab === 'chart' && (
+          <LivingChart
+            assessment={assessment}
+            onSelectHarbor={handleHarborSelect}
+          />
+        )}
         {activeTab === 'ask' && (
           <AskOrcaView
             language={language}
