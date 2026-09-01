@@ -72,7 +72,7 @@ class DisasterAlert(BaseModel):
 
 class PFZGround(BaseModel):
     rank: int
-    name: string_name: str = Field(alias="name")
+    name: str = Field(..., description="Fishing ground name")
     distance_km: float
     bearing_deg: float
     hsi: int

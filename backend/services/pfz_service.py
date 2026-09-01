@@ -8,7 +8,7 @@ Calculates multi-variate bio-physical suitability scores for Indian pelagic spec
 """
 
 import asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 SPECIES_PROFILES = {
     "Bangda (Indian Mackerel)": {
@@ -34,29 +34,29 @@ SPECIES_PROFILES = {
 }
 
 class PFZService:
-    def calculate_species_hsi(self, species_name: str, sst: float, chl: float, grad: float) -> int:
+    def calculate_species_hsi(self, species_name: str, sst: float, chl: float, grad: float, weights: Optional[dict] = None) -> int:
         """Calculates 0-100 HSI for a specific target species profile."""
         profile = SPECIES_PROFILES.get(species_name, SPECIES_PROFILES["Bangda (Indian Mackerel)"])
         
-        # SST suitability function (Gaussian bell curve centered on opt range)
+        w_sst = (weights.get("w_sst", 0.35) if weights else 0.35) * 100.0
+        w_chl = (weights.get("w_chl", 0.35) if weights else 0.35) * 100.0
+        w_grad = (weights.get("w_grad", 0.30) if weights else 0.30) * 100.0
+
         sst_mid = (profile["opt_sst_min"] + profile["opt_sst_max"]) / 2.0
         sst_dev = abs(sst - sst_mid)
         sst_suitability = max(0.0, 1.0 - (sst_dev / 3.0))
 
-        # Chlorophyll suitability function
         chl_suitability = min(1.0, max(0.0, (chl - 0.2) / (profile["opt_chl_max"] - 0.2)))
-
-        # Thermal front gradient boost
         grad_suitability = min(1.0, grad / 0.5)
 
         hsi = int(min(100, max(0, (
-            sst_suitability * 40 +
-            chl_suitability * 40 +
-            grad_suitability * 20
+            sst_suitability * w_sst +
+            chl_suitability * w_chl +
+            grad_suitability * w_grad
         ))))
         return hsi
 
-    async def compute_habitat_suitability(self, ocean_metrics: dict, lat: float, lon: float) -> Dict[str, Any]:
+    async def compute_habitat_suitability(self, ocean_metrics: dict, lat: float, lon: float, weights: Optional[dict] = None) -> Dict[str, Any]:
         """Calculates species matrix scores and returns top ranked fishing grounds."""
         await asyncio.sleep(0.01)
 
@@ -64,10 +64,9 @@ class PFZService:
         chl = ocean_metrics.get("chlorophyll_mg_m3", 1.65)
         grad = ocean_metrics.get("thermal_gradient_c_km", 0.45)
 
-        # Species HSI Matrix
         species_matrix = {}
         for sp_name in SPECIES_PROFILES.keys():
-            species_matrix[sp_name] = self.calculate_species_hsi(sp_name, sst, chl, grad)
+            species_matrix[sp_name] = self.calculate_species_hsi(sp_name, sst, chl, grad, weights)
 
         overall_hsi = int(sum(species_matrix.values()) / len(species_matrix))
 

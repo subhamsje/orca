@@ -3,11 +3,17 @@ Cost-Weighted A* Weather & Hazard Pathfinder Microservice
 Plots navigational waypoints detouring around hazardous swell waves and restricted geofences.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class PathfinderService:
-    def compute_safest_route(self, start_lat: float, start_lon: float, pfz_grounds: dict, geofence_info: dict) -> Dict[str, Any]:
-        """Calculates waypoints detouring around hazards and IMBL boundaries."""
+    def compute_safest_route(
+        self,
+        start_lat: float,
+        start_lon: float,
+        pfz_grounds: dict,
+        geofence_info: dict,
+        vessel_profile: Optional[dict] = None
+    ) -> Dict[str, Any]:
         top_grounds = pfz_grounds.get("top_grounds", [])
         if top_grounds:
             target_ground = top_grounds[0]
@@ -17,7 +23,6 @@ class PathfinderService:
             dest_coords = [start_lat + 0.08, start_lon - 0.12]
             dist_km = 14.2
 
-        # 4-Point Detour Waypoint Generation around Naval Buffer
         waypoints = [
             [start_lat, start_lon],
             [start_lat + 0.02, start_lon - 0.03],
@@ -30,7 +35,7 @@ class PathfinderService:
         return {
             "path_type": "Safest Path (A* Geofence & Hazard Detour)",
             "total_distance_km": dist_km,
-            "estimated_travel_mins": int(dist_km / 18.0 * 60),  # Based on 10 knots speed
+            "estimated_travel_mins": int(dist_km / 18.0 * 60),
             "waypoints": waypoints,
             "avoided_hazards": ["Naval Range Area B-4", "High Swell Wave Sector"],
             "fuel_consumption_est_liters": fuel_liters
