@@ -1,12 +1,18 @@
 """
-Search & Rescue (SAR) Bayesian Monte Carlo Particle Drift Engine
-Simulates lost vessel drift trajectories and supports mid-search Bayesian particle resampling.
+Search & Rescue (SAR) Monte Carlo Particle Drift & Bayesian Resampling Agent
+Simulates 1,000-particle lost vessel drift trajectories and supports mid-search Bayesian particle resampling
+when new sightings or negative search reports occur.
+
+Solves Cons of Legacy SAR Systems:
+- Legacy systems use simple linear wind vectors, producing massive 50+ km search radiuses.
+- ORCA 4.0 SARAgent simulates 1,000 particles with Stokes drift (5%), wind leeway (3%), ocean currents,
+  and Brownian turbulent diffusion, updating particle weights in real time when Coast Guard sightings occur.
 """
 
 import numpy as np
 from typing import Dict, Any, List
 
-class SARDriftService:
+class SARAgent:
     def simulate_drift_trajectory(
         self,
         last_known_lat: float,
@@ -18,7 +24,7 @@ class SARDriftService:
         wind_u_ms: float = 4.5,
         wind_v_ms: float = 2.1
     ) -> Dict[str, Any]:
-        alpha = 0.03  
+        alpha = 0.03  # Wind leeway coefficient (3%)
         stokes_u = 0.05
         stokes_v = 0.02
         diffusion_coeff = 2.5
@@ -103,4 +109,4 @@ class SARDriftService:
             "sar_asset_dispatch": "ICGS Varad High-Speed Patrol Vessel + Helicopter"
         }
 
-sar_drift_service = SARDriftService()
+sar_drift_service = SARAgent()
