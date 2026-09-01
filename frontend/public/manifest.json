@@ -1,0 +1,22 @@
+{
+  "name": "ORCA Marine System",
+  "short_name": "ORCA",
+  "description": "ISRO Marine Ecosystem Reasoning & Offline Safety Platform (SIH26176)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#032b45",
+  "theme_color": "#032b45",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
