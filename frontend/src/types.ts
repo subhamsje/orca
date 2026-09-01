@@ -22,6 +22,24 @@ export interface RouteResult {
   fuel_consumption_est_liters: number;
 }
 
+export interface HarborComparison {
+  harbor_name: string;
+  gross_revenue_inr: number;
+  total_fuel_cost_inr: number;
+  net_profit_inr: number;
+  unit_price_per_kg: number;
+  extra_distance_km: number;
+}
+
+export interface EconomicResult {
+  best_docking_harbor: string;
+  max_expected_profit_inr: number;
+  estimated_catch_kg: number;
+  target_species: string;
+  fuel_cost_total_inr: number;
+  harbor_comparisons: HarborComparison[];
+}
+
 export interface ExplanationResult {
   plain_language_text: string;
   wave_description: string;
@@ -43,6 +61,7 @@ export interface TripAssessmentResponse {
   override_reason?: string;
   pfz_grounds: PFZGround[];
   route: RouteResult;
+  economics?: EconomicResult;
   geofence_status: {
     dist_to_imbl_km: number;
     inside_imbl_buffer_warning: boolean;

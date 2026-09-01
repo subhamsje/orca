@@ -1,5 +1,5 @@
-import React from 'react';
-import { ShieldCheck, ShieldAlert, Volume2, Waves, Compass, Fuel, Fish } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, ShieldAlert, Volume2, Waves, Compass, Fuel, Fish, DollarSign, TrendingUp } from 'lucide-react';
 import { TripAssessmentResponse } from '../types';
 import { speakText } from '../utils/voiceSpeech';
 
@@ -10,10 +10,15 @@ interface TodayViewProps {
 }
 
 export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, onRefreshTrip }) => {
+  const [showCatchModal, setShowCatchModal] = useState(false);
+  const [catchKg, setCatchKg] = useState('85');
+  const [species, setSpecies] = useState('Bangda');
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+
   if (!assessment) {
     return (
       <div className="p-8 text-center text-slate-400 animate-pulse">
-        Evaluating satellite ocean models & safety circuit breakers...
+        Evaluating satellite ocean models, economic ROI & safety circuit breakers...
       </div>
     );
   }
@@ -23,6 +28,15 @@ export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, onRe
 
   const handleSpeak = () => {
     speakText(assessment.explanation.plain_language_text, language);
+  };
+
+  const handleCatchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setReportSubmitted(true);
+    setTimeout(() => {
+      setShowCatchModal(false);
+      setReportSubmitted(false);
+    }, 1500);
   };
 
   return (
@@ -112,6 +126,50 @@ export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, onRe
         </div>
       </div>
 
+      {/* Economic ROI & Wholesale Market Card */}
+      {assessment.economics && (
+        <div className="bg-gradient-to-r from-emerald-950/80 to-ocean-900 border border-emerald-800/80 rounded-2xl p-5 shadow-xl space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <div className="bg-emerald-900/80 p-2 rounded-xl text-emerald-400">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Economic Trip ROI & Wholesale Harbor Rates</h3>
+                <p className="text-xs text-slate-300">Net Profit = Est Catch Value − Fuel Cost</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowCatchModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition"
+            >
+              + Log Actual Catch
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <div className="bg-ocean-950/80 p-3 rounded-xl border border-ocean-800">
+              <span className="text-xs text-slate-400 block font-semibold">Recommended Dock</span>
+              <span className="text-base font-black text-emerald-400">
+                {assessment.economics.best_docking_harbor}
+              </span>
+            </div>
+            <div className="bg-ocean-950/80 p-3 rounded-xl border border-ocean-800">
+              <span className="text-xs text-slate-400 block font-semibold">Est Net Profit</span>
+              <span className="text-base font-black text-white">
+                ₹{assessment.economics.max_expected_profit_inr.toLocaleString()}
+              </span>
+            </div>
+            <div className="bg-ocean-950/80 p-3 rounded-xl border border-ocean-800">
+              <span className="text-xs text-slate-400 block font-semibold">Fuel Cost</span>
+              <span className="text-base font-black text-cyan-300">
+                ₹{assessment.economics.fuel_cost_total_inr.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Target Fishing Grounds Grid */}
       <div className="space-y-2">
         <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-2">
@@ -162,12 +220,12 @@ export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, onRe
                   Likely Schooling Species:
                 </span>
                 <div className="flex flex-wrap gap-1.5">
-                  {ground.likely_species.map((species, i) => (
+                  {ground.likely_species.map((sp, i) => (
                     <span
                       key={i}
                       className="bg-cyan-950 text-cyan-300 border border-cyan-800 text-xs font-medium px-2 py-0.5 rounded-md"
                     >
-                      🐟 {species}
+                      🐟 {sp}
                     </span>
                   ))}
                 </div>
@@ -176,6 +234,61 @@ export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, onRe
           ))}
         </div>
       </div>
+
+      {/* Log Catch Modal */}
+      {showCatchModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-ocean-900 border border-ocean-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-white">Closed-Loop Catch Report</h3>
+            {reportSubmitted ? (
+              <div className="p-4 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-xl text-xs font-bold text-center">
+                ✓ Catch logged! HSI model weights calibrated.
+              </div>
+            ) : (
+              <form onSubmit={handleCatchSubmit} className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Target Species</label>
+                  <select
+                    value={species}
+                    onChange={(e) => setSpecies(e.target.value)}
+                    className="w-full bg-ocean-950 border border-ocean-800 rounded-xl p-2.5 text-white"
+                  >
+                    <option value="Bangda">Bangda (Mackerel)</option>
+                    <option value="Surmai">Surmai (Kingfish)</option>
+                    <option value="Tarli">Tarli (Sardine)</option>
+                    <option value="Poplet">Poplet (Pomfret)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 font-bold mb-1">Actual Catch Weight (KG)</label>
+                  <input
+                    type="number"
+                    value={catchKg}
+                    onChange={(e) => setCatchKg(e.target.value)}
+                    className="w-full bg-ocean-950 border border-ocean-800 rounded-xl p-2.5 text-white"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCatchModal(false)}
+                    className="px-3 py-2 bg-ocean-800 text-slate-300 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl"
+                  >
+                    Submit Catch
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

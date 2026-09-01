@@ -1,6 +1,6 @@
 """
 ORCA 4.0 Multi-Service Orchestrator (DAG Runner)
-Executes concurrent fan-out for ocean, weather, wave, and disaster alert microservices.
+Executes concurrent fan-out for ocean, weather, wave, disaster alert, economic, and SAR microservices.
 """
 
 import asyncio
@@ -15,6 +15,9 @@ from services.safety_service import safety_service
 from services.geofence_service import geofence_service
 from services.pathfinder_service import pathfinder_service
 from services.nlg_service import nlg_service
+from services.economic_service import economic_service
+from services.sar_drift_service import sar_drift_service
+from services.closed_loop_service import closed_loop_service
 
 class MultiAgentOrchestrator:
     async def execute_pipeline(
@@ -30,7 +33,7 @@ class MultiAgentOrchestrator:
         Phase 1: Concurrent Parallel Ingestion Fan-Out
         Phase 2: Domain Bio-Physics & Geofencing
         Phase 3: Deterministic Safety Circuit Breaker Evaluation
-        Phase 4: Weather-Routing A* Path Calculation
+        Phase 4: Weather-Routing A* Path Calculation & Economic ROI Optimization
         Phase 5: Multilingual NLG & Provenance Synthesis
         """
         # Phase 1: Parallel Fan-Out
@@ -56,8 +59,13 @@ class MultiAgentOrchestrator:
             vessel_length_m=vessel_length_m
         )
 
-        # Phase 4: Weather-Routing A* Pathfinder
+        # Phase 4: Weather-Routing A* Pathfinder & Economic ROI Optimizer
         route_res = pathfinder_service.compute_safest_route(lat, lon, pfz_res, gis_res)
+        economic_res = economic_service.optimize_trip_economics(
+            target_ground=pfz_res["top_grounds"][0],
+            vessel_profile={"length_m": vessel_length_m},
+            fuel_liters=route_res["fuel_consumption_est_liters"]
+        )
 
         # Phase 5: Multilingual NLG & Provenance Synthesis
         explanation_res = nlg_service.synthesize_explanation(
@@ -79,7 +87,10 @@ class MultiAgentOrchestrator:
             "override_reason": safety_res.get("override_reason", None),
             "pfz_grounds": pfz_res["top_grounds"],
             "route": route_res,
+            "economics": economic_res,
             "geofence_status": gis_res,
             "explanation": explanation_res,
             "provenance": explanation_res["provenance_summary"]
         }
+
+orchestrator = MultiAgentOrchestrator()
