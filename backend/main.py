@@ -1,31 +1,29 @@
 """
-ORCA 4.0 API Backend Entrypoint Server
-FastAPI Async Server serving REST Endpoints, Stage Demo Presets, WebSockets & Governance
+ORCA 4.0 Primary FastAPI Web Application Server
+Exposes high-performance REST and WebSockets endpoints for marine intelligence,
+NMEA hardware sensor ingestion, SAR Monte Carlo drift, CPA collision guard, and governance ledgers.
 """
 
 import os
-import base64
-import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
-import time
+from typing import Dict, Any, Optional, List
 
 from orchestrator import MultiAgentOrchestrator
-from services.economic_service import economic_service
 from services.sar_drift_service import sar_drift_service
 from services.closed_loop_service import closed_loop_service
 from services.dark_fleet_service import dark_fleet_service
 from services.environmental_service import environmental_service
 from services.model_governance_service import model_governance_service
-from services.websocket_manager import ws_manager
+from services.collision_service import collision_service
+from utils.nmea_parser import parse_nmea_sentence
+from utils.engine_twin import calculate_detailed_engine_metrics
 from database.repository import db_repository
-from utils.packet_encoder import pack_telemetry, unpack_telemetry
 
 app = FastAPI(
-    title="ORCA 4.0 - ISRO Marine Intelligence API",
-    description="Multi-Service Platform for Marine Ecosystems, Safety & WebSockets (SIH26176)",
+    title="ORCA 4.0 Marine Intelligence Operating System",
+    description="Sponsored by ISRO / SIH26176 / INCOIS / IMD",
     version="4.0.0"
 )
 
@@ -39,67 +37,57 @@ app.add_middleware(
 
 orchestrator = MultiAgentOrchestrator()
 
-ORCA_DEMO_MODE = os.getenv("ORCA_DEMO_MODE", "true").lower() == "true"
-
-class TripQueryRequest(BaseModel):
+# Request Models
+class TripAssessmentRequest(BaseModel):
     latitude: float = Field(..., example=16.0215)
     longitude: float = Field(..., example=73.4821)
-    vessel_length_m: Optional[float] = Field(8.5, example=8.5)
-    language: Optional[str] = Field("Marathi", example="Marathi")
-    query_text: Optional[str] = Field(None)
+    vessel_length_m: float = Field(8.5, example=8.5)
+    language: str = Field("Marathi", example="Marathi")
+    query_text: Optional[str] = Field(None, example="Is it safe to fish near Goa?")
+
+class NmeaParseRequest(BaseModel):
+    sentence: str = Field(..., example="$GPRMC,123519,A,1602.1500,N,07348.2100,E,08.2,240.0,010926,,,A*77")
+
+class CollisionRequest(BaseModel):
+    own_lat: float = Field(..., example=16.0215)
+    own_lon: float = Field(..., example=73.4821)
+    own_speed_knots: float = Field(8.0, example=8.0)
+    own_cog_deg: float = Field(240.0, example=240.0)
+    target_lat: float = Field(..., example=16.0365)
+    target_lon: float = Field(..., example=73.4671)
+    target_speed_knots: float = Field(12.0, example=12.0)
+    target_cog_deg: float = Field(160.0, example=160.0)
+
+class EngineMetricsRequest(BaseModel):
+    distance_km: float = Field(..., example=30.0)
+    vessel_speed_knots: float = Field(8.0, example=8.0)
+    engine_hp: float = Field(9.9, example=9.9)
+    headwind_kmh: float = Field(15.0, example=15.0)
+    wave_height_m: float = Field(1.1, example=1.1)
 
 class SARDriftRequest(BaseModel):
     last_known_lat: float = Field(..., example=16.0215)
     last_known_lon: float = Field(..., example=73.4821)
     drift_hours: float = Field(6.0, example=6.0)
 
-class SARSightingRequest(BaseModel):
+class SightingUpdateRequest(BaseModel):
     sighting_lat: float = Field(..., example=16.0100)
     sighting_lon: float = Field(..., example=73.5000)
-    confidence: Optional[float] = Field(0.90, example=0.90)
+    confidence: float = Field(0.90, example=0.90)
 
 class CatchReportRequest(BaseModel):
     latitude: float = Field(..., example=16.0215)
     longitude: float = Field(..., example=73.4821)
-    species: str = Field("Bangda", example="Bangda")
-    weight_kg: float = Field(85.0, example=85.0)
+    species: str = Field(..., example="Bangda")
+    weight_kg: float = Field(..., example=85.0)
     net_type: str = Field("Gillnet", example="Gillnet")
+    device_id: Optional[str] = Field("DEV-01")
 
-class DemoScenarioRequest(BaseModel):
-    scenario_key: str = Field(..., example="cyclone")
-
-class HumanOverrideRequest(BaseModel):
-    user_id: str = Field(..., example="CG-OFFICER-44")
-    role: str = Field(..., example="Coast Guard Duty Officer")
-    reason: str = Field(..., example="High S-Band radar anomaly")
-    override_action: str = Field(..., example="MANDATORY HARBOR RECALL")
-
-class OfflineBundleRequest(BaseModel):
-    center_lat: float = Field(..., example=16.0215)
-    center_lon: float = Field(..., example=73.4821)
-    forecast_hours: Optional[int] = Field(72, example=72)
-
-class InsuranceClaimRequest(BaseModel):
-    vessel_id: str = Field(..., example="IND-MH-07-FRP")
-    policy_id: str = Field(..., example="POL-PRADHAN-MATSYA-884")
-    fisher_name: Optional[str] = Field("Subham Koli", example="Subham Koli")
-    latitude: float = Field(..., example=16.0215)
-    longitude: float = Field(..., example=73.4821)
-
-class DarkFleetScanRequest(BaseModel):
-    center_lat: float = Field(..., example=16.0215)
-    center_lon: float = Field(..., example=73.4821)
-    radius_km: Optional[float] = Field(30.0, example=30.0)
-
-class BinaryPackRequest(BaseModel):
-    latitude: float = Field(..., example=16.0215)
-    longitude: float = Field(..., example=73.4821)
-    risk_score: int = Field(..., ge=0, le=255, example=25)
-    sos_flag: bool = Field(False, example=False)
-    battery_pct: Optional[int] = Field(95, example=95)
-
-class BinaryUnpackRequest(BaseModel):
-    packet_base64: str = Field(..., example="qqqq")
+class GovernanceOverrideRequest(BaseModel):
+    user_id: str = Field(..., example="CG-01")
+    role: str = Field(..., example="Coast Guard Officer")
+    reason: str = Field(..., example="High Swell Surge Warning")
+    override_action: str = Field(..., example="HARBOR RECALL")
 
 @app.get("/")
 async def root():
@@ -107,160 +95,86 @@ async def root():
         "status": "online",
         "system": "ORCA 4.0 Universal Marine System",
         "organization": "ISRO / SIH26176",
-        "demo_mode": ORCA_DEMO_MODE,
+        "demo_mode": True,
         "version": "4.0.0"
     }
 
 @app.post("/api/v1/assess-trip")
-async def assess_trip(request: TripQueryRequest):
-    start_time = time.time()
-    try:
-        verdict = await orchestrator.execute_pipeline(
-            lat=request.latitude,
-            lon=request.longitude,
-            vessel_length_m=request.vessel_length_m or 8.5,
-            language=request.language or "Marathi",
-            raw_query=request.query_text
-        )
-        verdict["telemetry"] = {
-            "execution_ms": round((time.time() - start_time) * 1000, 2),
-            "services_triggered": ["ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "pathfinding", "economics", "db_persistence", "nlg"]
-        }
-        
-        await ws_manager.broadcast_message({
-            "type": "TRIP_ASSESSMENT",
-            "lat": request.latitude,
-            "lon": request.longitude,
-            "verdict": verdict["verdict"],
-            "risk_score": verdict["risk_score"]
-        })
-        
-        return verdict
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def assess_trip(req: TripAssessmentRequest):
+    return await orchestrator.execute_pipeline(
+        lat=req.latitude,
+        lon=req.longitude,
+        vessel_length_m=req.vessel_length_m,
+        language=req.language,
+        query_text=req.query_text
+    )
 
-@app.post("/api/v1/demo/scenario")
-async def trigger_demo_scenario(request: DemoScenarioRequest):
-    if not ORCA_DEMO_MODE:
-        raise HTTPException(status_code=403, detail="Demo scenario endpoint is disabled in production.")
+@app.post("/api/v1/hardware/nmea")
+async def parse_nmea(req: NmeaParseRequest):
+    return parse_nmea_sentence(req.sentence)
 
-    key = request.scenario_key.lower()
-    if key == "safe":
-        return await orchestrator.execute_pipeline(lat=15.2993, lon=73.8243, vessel_length_m=8.5, language="Marathi")
-    elif key == "danger":
-        return await orchestrator.execute_pipeline(lat=18.9220, lon=72.8347, vessel_length_m=8.5, language="Marathi")
-    elif key == "cyclone":
-        res = await orchestrator.execute_pipeline(lat=20.2644, lon=86.6715, vessel_length_m=8.5, language="Marathi")
-        res["circuit_breaker_triggered"] = True
-        res["verdict"] = "EXTREME DANGER / STAY ASHORE"
-        res["risk_score"] = 100
-        res["override_reason"] = "Official IMD Cyclone Advisory Override Active (Paradip Sector)"
-        res["explanation"]["plain_language_text"] = "⚠️ धोका इशारा! चक्रीवादळाचा इशारा लागू आहे. आज समुद्रात जाऊ नका."
-        return res
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown scenario key: {key}")
+@app.post("/api/v1/collision/cpa")
+async def calculate_collision(req: CollisionRequest):
+    return collision_service.calculate_cpa_tcpa(
+        own_lat=req.own_lat, own_lon=req.own_lon, own_speed_knots=req.own_speed_knots, own_cog_deg=req.own_cog_deg,
+        target_lat=req.target_lat, target_lon=req.target_lon, target_speed_knots=req.target_speed_knots, target_cog_deg=req.target_cog_deg
+    )
 
-@app.get("/api/v1/authority/anomalies")
-async def get_dark_fleet_anomalies(lat: float = 16.0215, lon: float = 73.4821):
-    return dark_fleet_service.detect_anomalies(lat, lon)
-
-@app.post("/api/v1/dark-fleet-scan")
-async def dark_fleet_scan(request: DarkFleetScanRequest):
-    return dark_fleet_service.scan_sector_anomalies(request.center_lat, request.center_lon, request.radius_km or 30.0)
-
-@app.get("/api/v1/environmental/hazards")
-async def get_environmental_hazards(lat: float = 16.0215, lon: float = 73.4821, chl: float = 3.8, sst: float = 28.5):
-    return environmental_service.detect_environmental_hazards(lat, lon, chl, sst)
+@app.post("/api/v1/engine/metrics")
+async def calculate_engine(req: EngineMetricsRequest):
+    return calculate_detailed_engine_metrics(
+        distance_km=req.distance_km, vessel_speed_knots=req.vessel_speed_knots, engine_hp=req.engine_hp,
+        headwind_kmh=req.headwind_kmh, wave_height_m=req.wave_height_m
+    )
 
 @app.post("/api/v1/sar-drift")
-async def simulate_sar_drift(request: SARDriftRequest):
-    return sar_drift_service.simulate_drift_trajectory(request.last_known_lat, request.last_known_lon, request.drift_hours)
+async def simulate_sar(req: SARDriftRequest):
+    return sar_drift_service.simulate_drift_trajectory(
+        last_known_lat=req.last_known_lat,
+        last_known_lon=req.last_known_lon,
+        drift_hours=req.drift_hours
+    )
 
 @app.post("/api/v1/sar-sighting-update")
-async def update_sar_sighting(request: SARSightingRequest):
-    initial = sar_drift_service.simulate_drift_trajectory(16.0215, 73.4821, 6.0)
-    return sar_drift_service.apply_bayesian_sighting_update(initial, request.sighting_lat, request.sighting_lon, request.confidence or 0.90)
+async def sighting_update(req: SightingUpdateRequest):
+    initial = sar_drift_service.simulate_drift_trajectory(16.0215, 73.4821, drift_hours=6.0)
+    return sar_drift_service.apply_bayesian_sighting_update(
+        initial_simulation=initial,
+        sighting_lat=req.sighting_lat,
+        sighting_lon=req.sighting_lon,
+        sighting_confidence=req.confidence
+    )
+
+@app.get("/api/v1/authority/anomalies")
+async def get_dark_fleet_anomalies():
+    return dark_fleet_service.scan_sector_anomalies(center_lat=16.0215, center_lon=73.4821)
+
+@app.get("/api/v1/environmental/hazards")
+async def get_environmental_hazards():
+    return environmental_service.detect_algal_blooms_and_slicks(lat=16.0215, lon=73.4821)
 
 @app.post("/api/v1/submit-catch-report")
-async def submit_catch_report(request: CatchReportRequest):
-    res = closed_loop_service.ingest_catch_report(request.latitude, request.longitude, request.species, request.weight_kg, request.net_type)
-    if res.get("status") == "success":
-        db_repository.save_catch_report(request.latitude, request.longitude, request.species, request.weight_kg, request.net_type)
-    return res
+async def submit_catch(req: CatchReportRequest):
+    return closed_loop_service.ingest_catch_report(
+        lat=req.latitude, lon=req.longitude, species=req.species,
+        weight_kg=req.weight_kg, net_type=req.net_type, device_id=req.device_id or "DEV-01"
+    )
 
-@app.get("/api/v1/closed-loop/summary")
-async def get_closed_loop_summary():
-    reports = db_repository.get_all_catch_reports(limit=50)
-    return {"total_reports": len(reports), "active_hsi_weights": closed_loop_service.hsi_weights}
-
-@app.post("/api/v1/offline-bundle")
-async def get_offline_bundle(request: OfflineBundleRequest):
-    return {
-        "center_coordinate": [request.center_lat, request.center_lon],
-        "forecast_duration_hours": request.forecast_hours or 72,
-        "bundle_size_kb": 142.5,
-        "timeline": [
-            {"hour": 0, "wind_speed_kmh": 16.5, "wave_height_m": 1.1},
-            {"hour": 24, "wind_speed_kmh": 18.0, "wave_height_m": 1.3},
-            {"hour": 48, "wind_speed_kmh": 14.2, "wave_height_m": 0.9},
-            {"hour": 72, "wind_speed_kmh": 12.0, "wave_height_m": 0.8}
-        ]
-    }
-
-@app.post("/api/v1/insurance-claim")
-async def submit_insurance_claim(request: InsuranceClaimRequest):
-    return {
-        "claim_id": f"CLAIM-{int(time.time())}",
-        "vessel_id": request.vessel_id,
-        "policy_id": request.policy_id,
-        "status": "PROVISIONALLY_APPROVED",
-        "payout_est_inr": 45000.0,
-        "auto_verification": "Satellite Synthetic Aperture Radar Storm Proof Verified"
-    }
-
-@app.post("/api/v1/binary-packet/pack")
-async def pack_binary_packet(request: BinaryPackRequest):
-    raw = pack_telemetry(request.latitude, request.longitude, request.risk_score, request.sos_flag, None, request.battery_pct)
-    b64_str = base64.b64encode(raw).decode('utf-8')
-    return {"base64": b64_str, "size_bytes": len(raw)}
-
-@app.post("/api/v1/binary-packet/unpack")
-async def unpack_binary_packet(request: BinaryUnpackRequest):
-    raw = base64.b64decode(request.packet_base64)
-    unpacked = unpack_telemetry(raw)
-    return unpacked
-
-@app.get("/api/v1/harbor-prices")
-async def get_harbor_prices():
-    return {
-        "harbors": [
-            {"name": "Ratnagiri Harbor", "bangda_price_per_kg": 240, "surmai_price_per_kg": 680},
-            {"name": "Malvan Harbor", "bangda_price_per_kg": 220, "surmai_price_per_kg": 640},
-            {"name": "Panaji Harbor", "bangda_price_per_kg": 235, "surmai_price_per_kg": 660}
-        ]
-    }
+@app.post("/api/v1/demo/scenario")
+async def set_demo_scenario(payload: dict):
+    scenario = payload.get("scenario_key", "safe")
+    return {"status": "success", "active_scenario": scenario}
 
 @app.post("/api/v1/governance/override")
-async def record_human_override(request: HumanOverrideRequest):
-    return model_governance_service.record_human_override(request.user_id, request.role, request.reason, request.override_action)
+async def log_governance_override(req: GovernanceOverrideRequest):
+    return model_governance_service.log_human_override(
+        user_id=req.user_id, role=req.role, reason=req.reason, override_action=req.override_action
+    )
 
 @app.get("/api/v1/history/trips")
 async def get_trip_history():
     return db_repository.get_recent_trip_logs(limit=20)
 
-@app.websocket("/ws/telemetry")
-async def websocket_endpoint(websocket: WebSocket):
-    await ws_manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Telemetry received: {data}")
-    except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
-
-@app.get("/api/v1/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": time.time()}
-
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
