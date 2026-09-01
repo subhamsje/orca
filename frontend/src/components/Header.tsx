@@ -1,6 +1,7 @@
 import React from 'react';
-import { Anchor, Ship, Wifi, Volume2, ShieldAlert, Sparkles, AlertCircle } from 'lucide-react';
+import { Anchor, Ship, Wifi, MapPin, AlertCircle } from 'lucide-react';
 import { VesselProfile } from '../types';
+import { INDIAN_HARBORS, HarborLocation } from '../utils/harbors';
 
 interface HeaderProps {
   vesselProfile: VesselProfile;
@@ -10,6 +11,8 @@ interface HeaderProps {
   isOffline: boolean;
   isDemoMode?: boolean;
   onSelectDemoPreset?: (scenarioKey: string) => void;
+  selectedHarbor: HarborLocation;
+  onSelectHarbor: (harbor: HarborLocation) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,6 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
   isOffline,
   isDemoMode = true,
   onSelectDemoPreset,
+  selectedHarbor,
+  onSelectHarbor,
 }) => {
   return (
     <div className="sticky top-0 z-50">
@@ -34,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           {onSelectDemoPreset && (
             <div className="flex items-center space-x-1.5 overflow-x-auto">
-              <span className="text-slate-400 text-[10px] uppercase font-bold hidden md:inline">Quick Presets:</span>
+              <span className="text-slate-400 text-[10px] uppercase font-bold hidden md:inline">Presets:</span>
               <button
                 onClick={() => onSelectDemoPreset('safe')}
                 className="bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700 text-[11px] px-2 py-0.5 rounded font-bold transition"
@@ -58,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       )}
 
-      <header className="bg-ocean-900 border-b border-ocean-800 px-4 py-3 flex items-center justify-between shadow-lg">
+      <header className="bg-ocean-900 border-b border-ocean-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 shadow-lg">
         <div className="flex items-center space-x-3">
           <div className="bg-cyan-600 p-2 rounded-xl text-white shadow-md">
             <Anchor className="w-6 h-6 animate-pulse" />
@@ -70,42 +75,68 @@ export const Header: React.FC<HeaderProps> = ({
                 SIH26176
               </span>
             </h1>
-            <p className="text-xs text-slate-400 font-medium">ISRO Marine Intelligence Platform</p>
+            <p className="text-xs text-slate-400 font-medium">ISRO Marine Ecosystem Intelligence</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Harbor Location Quick Switcher */}
+          <div className="flex items-center space-x-1.5 bg-ocean-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700">
+            <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+            <select
+              value={selectedHarbor.id}
+              onChange={(e) => {
+                const found = INDIAN_HARBORS.find((h) => h.id === e.target.value);
+                if (found) onSelectHarbor(found);
+              }}
+              aria-label="Select Coastal Harbor"
+              className="bg-transparent text-slate-200 text-xs font-bold outline-none cursor-pointer"
+            >
+              {INDIAN_HARBORS.map((h) => (
+                <option key={h.id} value={h.id} className="bg-ocean-900 text-white">
+                  📍 {h.name} ({h.state})
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Network Connectivity Badge */}
           <div
-            className={`flex items-center space-x-1.5 text-xs px-2.5 py-1 rounded-full font-semibold border ${
+            className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-full font-semibold border ${
               isOffline
                 ? 'bg-amber-950/80 text-amber-400 border-amber-800'
                 : 'bg-emerald-950/80 text-emerald-400 border-emerald-800'
             }`}
           >
             <Wifi className="w-3.5 h-3.5" />
-            <span>{isOffline ? 'OFFLINE PWA' : 'ONLINE (ISRO)'}</span>
+            <span className="hidden sm:inline">{isOffline ? 'OFFLINE PWA' : 'ONLINE (ISRO)'}</span>
           </div>
 
-          {/* Vessel Profile Quick Switcher */}
+          {/* Vessel Profile Button */}
           <button
             onClick={onOpenVesselModal}
-            className="flex items-center space-x-1.5 bg-ocean-800 hover:bg-ocean-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-ocean-700 transition"
+            className="flex items-center space-x-1 bg-ocean-800 hover:bg-ocean-700 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700 transition"
           >
             <Ship className="w-4 h-4 text-cyan-400" />
             <span className="font-semibold hidden sm:inline">{vesselProfile.vessel_name}</span>
             <span className="text-cyan-300 font-bold">({vesselProfile.length_m}m)</span>
           </button>
 
-          {/* Language Selector */}
+          {/* 8-Language Switcher */}
           <select
             value={language}
             onChange={(e) => onLanguageChange(e.target.value)}
-            aria-label="Select Language"
-            className="bg-ocean-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700 font-medium outline-none focus:ring-1 focus:ring-cyan-500"
+            aria-label="Select Dialect Language"
+            className="bg-ocean-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700 font-medium outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
           >
             <option value="Marathi">मराठी (Koli/Malvani)</option>
             <option value="Hindi">हिन्दी</option>
+            <option value="Gujarati">ગુજરાતી</option>
+            <option value="Tamil">தமிழ்</option>
+            <option value="Telugu">తెలుగు</option>
+            <option value="Malayalam">മലയാളം</option>
+            <option value="Kannada">ಕನ್ನಡ</option>
+            <option value="Bengali">বাংলা</option>
             <option value="English">English</option>
           </select>
         </div>
