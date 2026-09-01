@@ -30,7 +30,6 @@ class SafetyAgent:
         vessel_eval = evaluate_vessel_seaworthiness(swh, wind_speed, prof)
         max_safe_wave = vessel_eval["max_safe_wave_m"]
 
-        # Calculate wave steepness (Hs / T_swell)
         steepness_ratio = swh / max(1.0, swell_period)
 
         # RULE 1: Official Cyclone Alert Override (NON-NEGOTIABLE)
@@ -72,9 +71,9 @@ class SafetyAgent:
         # RULE 4: Deterministic Seaworthiness Risk Index Formula
         raw_risk = (
             (swh / max_safe_wave) * 35 +
-            (wind_gust / 50.0) * 30 +
-            (steepness_ratio / 0.15) * 20 +
-            (8.0 / max(4.0, swell_period)) * 15
+            (wind_gust / 60.0) * 25 +
+            (steepness_ratio / 0.25) * 15 +
+            (4.0 / max(4.0, swell_period)) * 10
         )
         risk_score = int(min(100, max(0, raw_risk)))
 
