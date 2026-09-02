@@ -9,6 +9,10 @@ venv/
 ENV/
 .env
 
+# SQLite WAL
+*.db-shm
+*.db-wal
+
 # Node / React
 node_modules/
 dist/

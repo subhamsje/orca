@@ -6,52 +6,74 @@
   body {
     @apply bg-ocean-950 text-slate-100 antialiased;
   }
-
-  /* Keep user-select on (allow text copy) but disallow text selection on UI chrome */
-  button,
-  [role='button'],
-  nav,
-  header {
+  button, [role='button'], nav, header {
     -webkit-tap-highlight-color: transparent;
   }
+  :focus-visible { outline: none; }
 
-  /* Custom focus ring fallbacks for browsers that strip tailwind's focus-visible */
-  :focus-visible {
-    outline: none;
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #021f33; }
+  ::-webkit-scrollbar-thumb { background: #0c4a6e; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #22d3ee; }
+}
+
+@layer components {
+  /* Glassmorphic Panels */
+  .glass-panel {
+    background: rgba(3, 43, 69, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(34, 211, 238, 0.08);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .glass-card {
+    background: rgba(3, 43, 69, 0.45);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(34, 211, 238, 0.06);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .glass-dark {
+    background: rgba(1, 13, 26, 0.75);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(7, 89, 133, 0.3);
+  }
+
+  /* Neon Glow Effects */
+  .neon-glow-cyan { box-shadow: 0 0 15px rgba(34,211,238,0.35), 0 0 45px rgba(34,211,238,0.1); }
+  .neon-glow-emerald { box-shadow: 0 0 15px rgba(52,211,153,0.35), 0 0 45px rgba(52,211,153,0.1); }
+  .neon-glow-amber { box-shadow: 0 0 15px rgba(251,191,36,0.35), 0 0 45px rgba(251,191,36,0.1); }
+  .neon-glow-red { box-shadow: 0 0 15px rgba(248,113,113,0.35), 0 0 45px rgba(248,113,113,0.1); }
+
+  /* Gradient Text */
+  .gradient-text-ocean {
+    background: linear-gradient(135deg, #22d3ee 0%, #7dd3fc 40%, #e0f1fe 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 }
 
 @layer utilities {
-  /* Lightweight keyframes used by modals — relies on Tailwind's `animate-in` etc. */
-  .animate-in {
-    animation-duration: 200ms;
-    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-    animation-fill-mode: both;
-  }
-  .fade-in {
-    animation-name: fadeIn;
-  }
-  .slide-in-from-bottom-4 {
-    animation-name: slideInFromBottom;
-  }
-  .zoom-in-95 {
-    animation-name: zoomIn95;
-  }
+  .animate-in { animation-duration: 200ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); animation-fill-mode: both; }
+  .fade-in { animation-name: fadeIn; }
+  .slide-in-from-bottom-4 { animation-name: slideInFromBottom; }
+  .zoom-in-95 { animation-name: zoomIn95; }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInFromBottom { from { transform: translateY(1rem); } to { transform: translateY(0); } }
+@keyframes zoomIn95 { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-@keyframes slideInFromBottom {
-  from { transform: translateY(1rem); }
-  to { transform: translateY(0); }
+/* Voice Waveform Bars */
+.voice-bar {
+  animation: voiceBar 0.6s ease-in-out infinite alternate;
 }
-
-@keyframes zoomIn95 {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+@keyframes voiceBar {
+  0% { height: 15%; }
+  100% { height: 85%; }
 }
 
 .leaflet-container {

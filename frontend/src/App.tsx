@@ -1,31 +1,42 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Header } from './components/Header';
-import { BottomNav, TabKey } from './components/BottomNav';
-import { TodayView } from './components/TodayView';
-import { LivingChart } from './components/LivingChart';
-import { AskOrcaView } from './components/AskOrcaView';
-import { AuthorityView } from './components/AuthorityView';
-import { OsintView } from './components/OsintView';
-import { SystemDiagnostics } from './components/SystemDiagnostics';
-import { VesselProfileModal } from './components/VesselProfileModal';
-import { TripAssessmentResponse, VesselProfile } from './types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  CommandPalette,
+  GlobalHarborDirectory,
+  MapStage,
+  MapStageHandle,
+  MultiObjectiveRoutePicker,
+  OceanVitals,
+  TopBar,
+  VerdictHero,
+  VesselProfileModal,
+} from './ui/orca';
+import { TripAssessmentResponse, VesselProfile, verdictTone } from './types';
 import { fetchTripAssessment } from './utils/api';
-import { HarborLocation, GLOBAL_HARBORS } from './utils/harbors';
+import { GLOBAL_HARBORS, HarborLocation } from './utils/harbors';
 
-const DEMO_COORDS: Record<string, { lat: number; lon: number }> = {
-  safe: { lat: 15.2993, lon: 73.8243 },
-  danger: { lat: 18.922, lon: 72.8347 },
-  cyclone: { lat: 20.2644, lon: 86.6715 },
-};
+function useMacLike(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent);
+}
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('chart');
-  const [language, setLanguage] = useState<string>('Marathi');
-  const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
-  const [isVesselModalOpen, setIsVesselModalOpen] = useState<boolean>(false);
+  const isMac = useMacLike();
+  const modKey = isMac ? '⌘' : 'Ctrl';
+
+  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(GLOBAL_HARBORS[3]); // Mumbai Sassoon Dock
   const [assessment, setAssessment] = useState<TripAssessmentResponse | null>(null);
-  const [isLoadingAssessment, setIsLoadingAssessment] = useState<boolean>(false);
-  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(GLOBAL_HARBORS[0]);
+  const [isLoadingAssessment, setIsLoadingAssessment] = useState(false);
+  const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
+  const [isCommandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [isVesselModalOpen, setVesselModalOpen] = useState(false);
+
+  const [mapCenter, setMapCenter] = useState<[number, number]>([
+    selectedHarbor.lat,
+    selectedHarbor.lon,
+  ]);
+  const [mapZoom, setMapZoom] = useState(7);
+  const flyNonceRef = useRef(0);
+  const mapRef = useRef<MapStageHandle | null>(null);
 
   const [vesselProfile, setVesselProfile] = useState<VesselProfile>({
     vessel_id: 'IND-MH-04-892',
@@ -35,135 +46,249 @@ export function App() {
     fuel_capacity_l: 60,
   });
 
+  const [language, setLanguage] = useState('English');
+
+  // ---------- data fetching ----------
   const loadAssessment = useCallback(
-    async (overrideScenario?: string, targetHarbor?: HarborLocation) => {
-      const harbor = targetHarbor ?? selectedHarbor;
-      const urlParams = new URLSearchParams(window.location.search);
-      const demoMode = overrideScenario ?? urlParams.get('demo');
-
-      const coords = demoMode && DEMO_COORDS[demoMode]
-        ? DEMO_COORDS[demoMode]
-        : { lat: harbor.lat, lon: harbor.lon };
-
+    async (lat: number, lon: number) => {
       setIsLoadingAssessment(true);
-      const data = await fetchTripAssessment(
-        coords.lat,
-        coords.lon,
-        vesselProfile.length_m,
-        language,
-      );
-
-      if (demoMode === 'cyclone') {
-        data.circuit_breaker_triggered = true;
-        data.verdict = 'EXTREME DANGER / STAY ASHORE';
-        data.risk_score = 100;
-        data.override_reason = 'Official IMD Cyclone Advisory Override Active (Paradip Sector)';
-        data.explanation.plain_language_text =
-          '⚠️ धोका इशारा! चक्रीवादळाचा इशारा लागू आहे. आज समुद्रात जाऊ नका.';
+      try {
+        const data = await fetchTripAssessment(lat, lon, vesselProfile.length_m, language);
+        setAssessment(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsLoadingAssessment(false);
       }
-
-      setAssessment(data);
-      setIsLoadingAssessment(false);
     },
-    [language, selectedHarbor, vesselProfile.length_m],
+    [vesselProfile.length_m, language],
   );
 
+  // Reassess whenever harbor or language changes (debounced)
   useEffect(() => {
-    loadAssessment();
+    const t = setTimeout(() => {
+      loadAssessment(selectedHarbor.lat, selectedHarbor.lon);
+    }, 100);
+    return () => clearTimeout(t);
+  }, [selectedHarbor, language, loadAssessment]);
 
+  // First load
+  useEffect(() => {
+    loadAssessment(selectedHarbor.lat, selectedHarbor.lon);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Connectivity tracking
+  useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [loadAssessment]);
+  }, []);
 
-  const handleHarborSelect = (harbor: HarborLocation) => {
-    setSelectedHarbor(harbor);
-    loadAssessment(undefined, harbor);
-  };
+  // ---------- keyboard shortcuts ----------
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const cmd = isMac ? e.metaKey : e.ctrlKey;
+      if (cmd && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((v) => !v);
+      } else if (e.key === 'Escape') {
+        setCommandPaletteOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isMac]);
 
-  const handleQuerySubmit = async (queryText: string) => {
-    const data = await fetchTripAssessment(
-      selectedHarbor.lat,
-      selectedHarbor.lon,
-      vesselProfile.length_m,
-      language,
-      queryText,
-    );
-    setAssessment(data);
-  };
+  // ---------- handlers ----------
+  const handleSelectHarbor = useCallback((h: HarborLocation) => {
+    setSelectedHarbor(h);
+    flyNonceRef.current += 1;
+    mapRef.current?.flyTo(h.lat, h.lon, 9);
+  }, []);
+
+  const handleFlyToCoordinates = useCallback((lat: number, lon: number) => {
+    flyNonceRef.current += 1;
+    mapRef.current?.flyTo(lat, lon, 9);
+    // Find closest harbor for the assessment pipeline
+    let closest: HarborLocation = GLOBAL_HARBORS[0];
+    let closestD = Infinity;
+    for (const h of GLOBAL_HARBORS) {
+      const d = haversine(lat, lon, h.lat, h.lon);
+      if (d < closestD) {
+        closestD = d;
+        closest = h;
+      }
+    }
+    setSelectedHarbor(closest);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    loadAssessment(selectedHarbor.lat, selectedHarbor.lon);
+  }, [loadAssessment, selectedHarbor]);
+
+  const onSelectHarborMap = handleSelectHarbor;
+
+  const mapHarborTone = assessment
+    ? verdictTone(assessment.risk_score, assessment.circuit_breaker_triggered)
+    : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#020b14] text-slate-100 selection:bg-cyan-500 selection:text-white">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:bg-cyan-700 focus:text-white focus:px-3 focus:py-2 focus:rounded-md"
-      >
-        Skip to main content
-      </a>
+    <div className="relative h-screen w-screen overflow-hidden aurora text-slate-100">
+      {/* Full-bleed map background */}
+      <div className="absolute inset-0 z-0">
+        <MapStage
+          ref={mapRef}
+          center={mapCenter}
+          zoom={mapZoom}
+          flyNonce={flyNonceRef.current}
+          assessment={assessment}
+          harbors={GLOBAL_HARBORS}
+          selectedHarborId={selectedHarbor.id}
+          onSelectHarbor={onSelectHarborMap}
+          onViewportChange={(c, z) => {
+            setMapCenter(c);
+            setMapZoom(z);
+          }}
+        />
+      </div>
 
-      <Header
-        vesselProfile={vesselProfile}
-        onOpenVesselModal={() => setIsVesselModalOpen(true)}
-        language={language}
-        onLanguageChange={setLanguage}
-        isOffline={isOffline}
-        isDemoMode
-        onSelectDemoPreset={(scenario) => loadAssessment(scenario)}
-        selectedHarbor={selectedHarbor}
-        onSelectHarbor={handleHarborSelect}
+      {/* Vignette overlay to keep UI readable on bright tiles */}
+      <div
+        className="absolute inset-0 z-10 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 35%, rgba(1,7,15,0.55) 95%)',
+        }}
       />
 
-      <main
-        id="main-content"
-        tabIndex={-1}
-        className="flex-1 w-full px-3 sm:px-6 py-4 pb-24"
-      >
-        {activeTab === 'chart' && (
-          <LivingChart
-            assessment={assessment}
-            onSelectHarbor={handleHarborSelect}
-            vesselProfile={vesselProfile}
-          />
-        )}
-        {activeTab === 'today' && (
-          <TodayView
+      {/* Top bar */}
+      <div className="absolute top-0 inset-x-0 z-30">
+        <TopBar
+          isOffline={isOffline}
+          selectedHarbor={selectedHarbor}
+          assessment={assessment}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onSelectHarbor={handleSelectHarbor}
+          language={language}
+          onLanguageChange={setLanguage}
+          onOpenVessel={() => setVesselModalOpen(true)}
+          vesselName={vesselProfile.vessel_name}
+          vesselLengthM={vesselProfile.length_m}
+        />
+      </div>
+
+      {/* Left intel rail */}
+      <aside className="absolute left-3 top-[5.5rem] bottom-3 z-20 w-[22rem] max-w-[calc(100vw-1.5rem)] hidden lg:flex flex-col gap-3 pointer-events-none">
+        <div className="pointer-events-auto">
+          <VerdictHero
             assessment={assessment}
             language={language}
             isLoading={isLoadingAssessment}
-            onRefreshTrip={() => loadAssessment()}
+            onRefresh={handleRefresh}
           />
-        )}
-        {activeTab === 'ask' && (
-          <AskOrcaView
-            language={language}
-            onQuerySubmit={handleQuerySubmit}
-            latestExplanation={assessment?.explanation.plain_language_text}
+        </div>
+        <div className="pointer-events-auto">
+          <OceanVitals assessment={assessment} />
+        </div>
+        <div className="pointer-events-auto">
+          <MultiObjectiveRoutePicker
+            routes={assessment?.multi_objective_routes}
+            onFlyToWaypoints={(wps) => {
+              flyNonceRef.current += 1;
+              mapRef.current?.flyToWaypoints(wps);
+            }}
           />
-        )}
-        {activeTab === 'authority' && <AuthorityView />}
-        {activeTab === 'osint' && <OsintView />}
-        {activeTab === 'diagnostics' && (
-          <SystemDiagnostics assessment={assessment} />
-        )}
-      </main>
+        </div>
+      </aside>
 
-      <BottomNav active={activeTab} onSelect={setActiveTab} />
+      {/* Right rail — global harbor directory */}
+      <aside className="absolute right-3 top-[5.5rem] bottom-3 z-20 w-[20rem] max-w-[calc(100vw-1.5rem)] hidden xl:flex flex-col pointer-events-none">
+        <div className="pointer-events-auto h-full">
+          <GlobalHarborDirectory
+            selectedHarborId={selectedHarbor.id}
+            onSelect={handleSelectHarbor}
+            assessmentForHarbor={(h) =>
+              assessment && h.id === selectedHarbor.id
+                ? {
+                    verdict: assessment.verdict,
+                    risk: assessment.risk_score,
+                    tone: mapHarborTone ?? 'caution',
+                  }
+                : null
+            }
+            isLoading={isLoadingAssessment}
+          />
+        </div>
+      </aside>
+
+      {/* Bottom strip — quick actions & status */}
+      <footer className="absolute bottom-0 inset-x-0 z-20 px-3 pb-3 pt-12 pointer-events-none">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
+          <div className="glass rounded-2xl px-3 py-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] font-bold text-cyan-200">
+            <span className="dot bg-emerald-400 animate-pulse-soft" />
+            ORCA-MultiObjective-v4.0 · {assessment?.telemetry.execution_ms?.toFixed(0) ?? '—'} ms
+          </div>
+          <div className="glass rounded-2xl px-3 py-2 flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] font-bold text-ink-muted">
+            <span className="hidden md:inline">Press</span>
+            <kbd className="rounded bg-ocean-1000 px-1.5 py-0.5 text-cyan-300 font-mono text-[10px]">
+              {modKey}K
+            </kbd>
+            <span>for command palette</span>
+          </div>
+        </div>
+      </footer>
+
+      {/* Mobile / tablet fallbacks: full-screen panels */}
+      <div className="absolute inset-x-3 bottom-16 z-20 lg:hidden pointer-events-auto space-y-3 max-h-[60vh] overflow-y-auto pb-2">
+        <VerdictHero
+          assessment={assessment}
+          language={language}
+          isLoading={isLoadingAssessment}
+          onRefresh={handleRefresh}
+        />
+        <OceanVitals assessment={assessment} />
+        <MultiObjectiveRoutePicker
+          routes={assessment?.multi_objective_routes}
+          onFlyToWaypoints={(wps) => {
+            flyNonceRef.current += 1;
+            mapRef.current?.flyToWaypoints(wps);
+          }}
+        />
+      </div>
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onSelectHarbor={handleSelectHarbor}
+        onFlyToCoordinate={handleFlyToCoordinates}
+      />
 
       <VesselProfileModal
         isOpen={isVesselModalOpen}
-        onClose={() => setIsVesselModalOpen(false)}
-        vesselProfile={vesselProfile}
-        onSaveProfile={setVesselProfile}
+        onClose={() => setVesselModalOpen(false)}
+        profile={vesselProfile}
+        onSave={setVesselProfile}
       />
     </div>
   );
+}
+
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 export default App;
