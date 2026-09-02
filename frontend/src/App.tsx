@@ -134,7 +134,11 @@ export function App() {
           />
         )}
         {activeTab === 'chart' && (
-          <LivingChart assessment={assessment} onSelectHarbor={handleHarborSelect} />
+          <LivingChart
+            assessment={assessment}
+            onSelectHarbor={handleHarborSelect}
+            vesselProfile={vesselProfile}
+          />
         )}
         {activeTab === 'ask' && (
           <AskOrcaView
