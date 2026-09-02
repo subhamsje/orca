@@ -17,3 +17,4 @@ from services.closed_loop_service import closed_loop_service, ClosedLoopService
 from services.dark_fleet_service import dark_fleet_service, DarkFleetAgent, DarkFleetAgent as DarkFleetService
 from services.environmental_service import environmental_service, EnvironmentalService
 from services.model_governance_service import model_governance_service, ModelGovernanceService
+from services.osint_service import osint_service, OSINTAgent

@@ -1,7 +1,7 @@
 """
 ORCA 4.0 Primary FastAPI Web Application Server
 Exposes high-performance REST and WebSockets endpoints for marine intelligence,
-NMEA hardware sensor ingestion, SAR Monte Carlo drift, CPA collision guard, and governance ledgers.
+NMEA hardware sensor ingestion, SAR Monte Carlo drift, CPA collision guard, OSINT intelligence, and governance ledgers.
 """
 
 import os
@@ -21,6 +21,7 @@ from services.collision_service import collision_service
 from services.offline_sync_service import offline_sync_service
 from services.insurance_service import insurance_service
 from services.economic_service import economic_service
+from services.osint_service import osint_service
 from utils.nmea_parser import parse_nmea_sentence
 from utils.engine_twin import calculate_detailed_engine_metrics
 from utils.packet_encoder import pack_telemetry, unpack_telemetry
@@ -121,6 +122,11 @@ class BinaryPackRequest(BaseModel):
 class BinaryUnpackRequest(BaseModel):
     packet_base64: str = Field(..., example="")
 
+class OsintCorrelateRequest(BaseModel):
+    latitude: float = Field(..., example=16.0215)
+    longitude: float = Field(..., example=73.4821)
+    radius_km: float = Field(50.0, example=50.0)
+
 @app.get("/")
 async def root():
     return {
@@ -162,6 +168,14 @@ async def calculate_engine(req: EngineMetricsRequest):
         distance_km=req.distance_km, vessel_speed_knots=req.vessel_speed_knots, engine_hp=req.engine_hp,
         headwind_kmh=req.headwind_kmh, wave_height_m=req.wave_height_m
     )
+
+@app.get("/api/v1/osint/summary")
+async def get_osint_summary():
+    return osint_service.get_public_intel_summary()
+
+@app.post("/api/v1/osint/correlate")
+async def correlate_osint(req: OsintCorrelateRequest):
+    return osint_service.correlate_sector_intelligence(lat=req.latitude, lon=req.longitude, radius_km=req.radius_km)
 
 @app.post("/api/v1/sar-drift")
 async def simulate_sar(req: SARDriftRequest):

@@ -10,6 +10,7 @@ Coordinates parallel execution of specialist agents:
 - PathfinderService (A* Geofence & Hazard Detour)
 - EconomicService (Multi-Harbor Net ROI)
 - CollisionAvoidanceAgent (CPA/TCPA Guard)
+- OSINTAgent (NASA VIIRS, AGMARKNET, Security Alerts)
 - NLGService (Plain-Language Voice Translation)
 """
 
@@ -28,6 +29,7 @@ from services.pathfinder_service import pathfinder_service
 from services.nlg_service import nlg_service
 from services.economic_service import economic_service
 from services.collision_service import collision_service
+from services.osint_service import osint_service
 from database.repository import db_repository
 
 class MultiAgentOrchestrator:
@@ -77,12 +79,15 @@ class MultiAgentOrchestrator:
             target_lat=lat + 0.015, target_lon=lon - 0.015, target_speed_knots=12.0, target_cog_deg=160.0
         )
 
-        # Step 7: Natural Language Synthesizer (NLG Voice)
+        # Step 7: Maritime OSINT Sector Intelligence Correlation
+        osint_res = osint_service.correlate_sector_intelligence(lat, lon, radius_km=30.0)
+
+        # Step 8: Natural Language Synthesizer (NLG Voice)
         nlg_res = nlg_service.synthesize_explanation(
             safety_res, pfz_res, weather_res, wave_res, route_res, language
         )
 
-        # Step 8: Persistent SQLite Audit Log Storage
+        # Step 9: Persistent SQLite Audit Log Storage
         db_repository.save_trip_log(
             lat=lat, lon=lon,
             verdict=safety_res["verdict_label"],
@@ -106,12 +111,13 @@ class MultiAgentOrchestrator:
             "route": route_res,
             "economics": econ_res,
             "collision_guard": collision_res,
+            "osint_sector_intelligence": osint_res,
             "geofence_status": geofence_service.inspect_coordinates(lat, lon),
             "explanation": nlg_res,
             "provenance": nlg_res.get("provenance_summary", {}),
             "telemetry": {
                 "execution_ms": round(dt_ms, 2),
-                "services_triggered": ["ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "pathfinding", "economics", "collision", "db_persistence", "nlg"]
+                "services_triggered": ["ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "pathfinding", "economics", "collision", "osint", "db_persistence", "nlg"]
             }
         }
 
