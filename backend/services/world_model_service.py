@@ -28,11 +28,21 @@ class MaritimeWorldModelService:
             max_wave_height_m=round(0.22 * vessel_length_m + 0.05 * 2.2, 2)
         )
 
-        # Ocean State
-        sst = ocean_metrics.get("sst_c", 28.4) if ocean_metrics else 28.4
-        chl = ocean_metrics.get("chlorophyll_mg_m3", 1.8) if ocean_metrics else 1.8
-        hs = wave_metrics.get("wave_height_m", 1.1) if wave_metrics else 1.1
-        period = wave_metrics.get("wave_period_s", 8.0) if wave_metrics else 8.0
+        # Ocean State. ocean_metrics is the dict returned by ocean_service
+        # (keys: sea_surface_temp_c, chlorophyll_mg_m3, ...). Wave metrics
+        # come from wave_service (keys: significant_wave_height_m,
+        # swell_period_sec). The fallback values are used only when the
+        # upstream HTTP path failed AND there is no cache.
+        def _from(metrics: dict, *keys, fallback):
+            for k in keys:
+                if metrics and metrics.get(k) is not None:
+                    return metrics[k]
+            return fallback
+
+        sst = _from(ocean_metrics or {}, "sea_surface_temp_c", "sst_c", fallback=28.4)
+        chl = _from(ocean_metrics or {}, "chlorophyll_mg_m3", "chlorophyll", fallback=1.8)
+        hs = _from(wave_metrics or {}, "significant_wave_height_m", "wave_height_m", fallback=1.1)
+        period = _from(wave_metrics or {}, "swell_period_sec", "wave_period_s", fallback=8.0)
 
         ocean_state = OceanState(
             sst_c=sst,
