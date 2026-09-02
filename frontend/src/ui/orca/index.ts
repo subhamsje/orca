@@ -10,4 +10,5 @@ export { OsintPanel } from './OsintPanel';
 export { TopBar } from './TopBar';
 export { VesselProfileModal } from './VesselProfileModal';
 export { MapStage } from './MapStage';
+export { VoiceAssistant } from './VoiceAssistant';
 export type { MapStageHandle } from './MapStage';

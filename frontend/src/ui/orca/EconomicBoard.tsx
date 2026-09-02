@@ -4,10 +4,20 @@ import { EconomicResult } from '../../types';
 import { formatINR, formatINRSigned, formatKm } from '../../utils/format';
 
 interface EconomicBoardProps {
-  economic: EconomicResult;
+  economic: EconomicResult | undefined | null;
 }
 
 export const EconomicBoard: React.FC<EconomicBoardProps> = ({ economic }) => {
+  if (!economic) {
+    return (
+      <section className="glass rounded-2xl p-4">
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300 flex items-center gap-2">
+          <Banknote className="w-3.5 h-3.5" /> Profit Optimizer
+        </h3>
+        <p className="mt-3 text-xs text-ink-muted">Awaiting harbor price intelligence.</p>
+      </section>
+    );
+  }
   return (
     <section className="glass rounded-2xl p-5 relative overflow-hidden">
       <div className="absolute inset-0 tactical-grid-fine opacity-20 pointer-events-none" />

@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CommandPalette,
+  EconomicBoard,
   GlobalHarborDirectory,
+  InterAgentStream,
   MapStage,
   MapStageHandle,
   MultiObjectiveRoutePicker,
   OceanVitals,
+  OsintPanel,
+  SpeciesMatrixPanel,
   TopBar,
   VerdictHero,
   VesselProfileModal,
+  VoiceAssistant,
 } from './ui/orca';
 import { TripAssessmentResponse, VesselProfile, verdictTone } from './types';
 import { fetchTripAssessment } from './utils/api';
@@ -132,6 +137,21 @@ export function App() {
     loadAssessment(selectedHarbor.lat, selectedHarbor.lon);
   }, [loadAssessment, selectedHarbor]);
 
+  const handleVoiceQuery = useCallback(
+    async (text: string): Promise<TripAssessmentResponse> => {
+      const data = await fetchTripAssessment(
+        selectedHarbor.lat,
+        selectedHarbor.lon,
+        vesselProfile.length_m,
+        language,
+        text,
+      );
+      setAssessment(data);
+      return data;
+    },
+    [selectedHarbor, vesselProfile.length_m, language],
+  );
+
   const onSelectHarborMap = handleSelectHarbor;
 
   const mapHarborTone = assessment
@@ -184,7 +204,7 @@ export function App() {
       </div>
 
       {/* Left intel rail */}
-      <aside className="absolute left-3 top-[5.5rem] bottom-3 z-20 w-[22rem] max-w-[calc(100vw-1.5rem)] hidden lg:flex flex-col gap-3 pointer-events-none">
+      <aside className="absolute left-3 top-[5.25rem] bottom-20 z-20 w-[24rem] max-w-[calc(100vw-1.5rem)] hidden lg:flex flex-col gap-3 pointer-events-none overflow-y-auto pr-1">
         <div className="pointer-events-auto">
           <VerdictHero
             assessment={assessment}
@@ -204,6 +224,21 @@ export function App() {
               mapRef.current?.flyToWaypoints(wps);
             }}
           />
+        </div>
+        <div className="pointer-events-auto">
+          <SpeciesMatrixPanel
+            species={assessment?.species_matrix ?? {}}
+            pfz={assessment?.pfz_grounds ?? []}
+          />
+        </div>
+        <div className="pointer-events-auto">
+          <EconomicBoard economic={assessment?.economics} />
+        </div>
+        <div className="pointer-events-auto">
+          <OsintPanel intelligence={assessment?.osint_sector_intelligence} />
+        </div>
+        <div className="pointer-events-auto">
+          <InterAgentStream events={assessment?.inter_agent_event_bus} />
         </div>
       </aside>
 
@@ -274,6 +309,15 @@ export function App() {
         onClose={() => setVesselModalOpen(false)}
         profile={vesselProfile}
         onSave={setVesselProfile}
+      />
+
+      <VoiceAssistant
+        language={language}
+        lat={selectedHarbor.lat}
+        lon={selectedHarbor.lon}
+        vesselLengthM={vesselProfile.length_m}
+        latestAssessment={assessment}
+        onQuerySubmit={handleVoiceQuery}
       />
     </div>
   );

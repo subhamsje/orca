@@ -43,6 +43,18 @@ class OceanState(BaseModel):
     wave_height_m: float = Field(1.1)
     wave_period_s: float = Field(8.0)
     salinity_psu: float = Field(35.2)
+    # Live atmospheric & swell additions
+    wind_speed_kmh: float = Field(16.5)
+    wind_gust_kmh: float = Field(22.0)
+    wind_direction_deg: float = Field(230.0)
+    wind_direction_cardinal: str = Field("SW")
+    swell_wave_height_m: float = Field(0.9)
+    swell_wave_period_s: float = Field(10.5)
+    swell_wave_direction_deg: float = Field(225.0)
+    air_pressure_hpa: float = Field(1012.0)
+    air_temperature_c: float = Field(28.0)
+    cloud_cover_pct: float = Field(45.0)
+    visibility_km: float = Field(10.0)
 
 class RiskState(BaseModel):
     weather_risk_score: float = Field(25.0)

@@ -40,6 +40,17 @@ export interface OceanState {
   wave_height_m: number;
   wave_period_s: number;
   salinity_psu: number;
+  wind_speed_kmh: number;
+  wind_gust_kmh: number;
+  wind_direction_deg: number;
+  wind_direction_cardinal: string;
+  swell_wave_height_m: number;
+  swell_wave_period_s: number;
+  swell_wave_direction_deg: number;
+  air_pressure_hpa: number;
+  air_temperature_c: number;
+  cloud_cover_pct: number;
+  visibility_km: number;
 }
 
 export interface RiskState {

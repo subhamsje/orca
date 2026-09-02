@@ -43,12 +43,35 @@ class MaritimeWorldModelService:
         chl = _from(ocean_metrics or {}, "chlorophyll_mg_m3", "chlorophyll", fallback=1.8)
         hs = _from(wave_metrics or {}, "significant_wave_height_m", "wave_height_m", fallback=1.1)
         period = _from(wave_metrics or {}, "swell_period_sec", "wave_period_s", fallback=8.0)
+        swell_h = _from(wave_metrics or {}, "swell_wave_height_m", fallback=round(hs * 0.7, 2))
+        swell_p = _from(wave_metrics or {}, "swell_wave_period_s", "swell_period_sec", fallback=round(period + 2.0, 1))
+        swell_dir = _from(wave_metrics or {}, "swell_wave_direction_deg", fallback=225.0)
+
+        wind_speed = _from(weather_metrics or {}, "wind_speed_kmh", fallback=16.5)
+        wind_gust = _from(weather_metrics or {}, "wind_gust_kmh", fallback=22.0)
+        wind_dir = _from(weather_metrics or {}, "wind_direction_deg", fallback=230.0)
+        wind_cardinal = _from(weather_metrics or {}, "wind_direction", fallback="SW")
+        pressure = _from(weather_metrics or {}, "air_pressure_hpa", fallback=1012.0)
+        air_temp = _from(weather_metrics or {}, "air_temperature_c", fallback=28.0)
+        cloud = _from(weather_metrics or {}, "cloud_cover_pct", fallback=45.0)
+        vis = _from(weather_metrics or {}, "visibility_km", fallback=10.0)
 
         ocean_state = OceanState(
             sst_c=sst,
             chlorophyll_mg_m3=chl,
             wave_height_m=hs,
-            wave_period_s=period
+            wave_period_s=period,
+            wind_speed_kmh=wind_speed,
+            wind_gust_kmh=wind_gust,
+            wind_direction_deg=wind_dir,
+            wind_direction_cardinal=wind_cardinal,
+            swell_wave_height_m=swell_h,
+            swell_wave_period_s=swell_p,
+            swell_wave_direction_deg=swell_dir,
+            air_pressure_hpa=pressure,
+            air_temperature_c=air_temp,
+            cloud_cover_pct=cloud,
+            visibility_km=vis,
         )
 
         # Risk State

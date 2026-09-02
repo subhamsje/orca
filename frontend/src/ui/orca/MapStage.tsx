@@ -22,7 +22,7 @@ interface MapStageProps {
 }
 
 const TILE_URL =
-  'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png';
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 // Fix Leaflet default icon URLs
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
