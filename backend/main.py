@@ -23,6 +23,8 @@ from services.insurance_service import insurance_service
 from services.economic_service import economic_service
 from services.osint_service import osint_service
 from services.satellite_pass_service import satellite_pass_service
+from services.world_model_service import world_model_service
+from services.optimization_engine_service import optimization_engine
 from utils.nmea_parser import parse_nmea_sentence
 from utils.engine_twin import calculate_detailed_engine_metrics
 from utils.packet_encoder import pack_telemetry, unpack_telemetry
@@ -128,6 +130,13 @@ class OsintCorrelateRequest(BaseModel):
     longitude: float = Field(..., example=73.4821)
     radius_km: float = Field(50.0, example=50.0)
 
+class MultiRouteRequest(BaseModel):
+    origin_lat: float = Field(..., example=16.0215)
+    origin_lon: float = Field(..., example=73.4821)
+    target_lat: float = Field(..., example=16.1000)
+    target_lon: float = Field(..., example=73.3600)
+    vessel_length_m: float = Field(8.5, example=8.5)
+
 @app.get("/")
 async def root():
     return {
@@ -141,6 +150,17 @@ async def root():
 @app.get("/api/v1/health")
 async def health_check():
     return {"status": "healthy", "system": "ORCA 4.0 Universal Marine System"}
+
+@app.get("/api/v1/world-model")
+async def get_world_model(lat: float = 16.0215, lon: float = 73.4821, vessel_length_m: float = 8.5):
+    return world_model_service.assemble_world_model(lat=lat, lon=lon, vessel_length_m=vessel_length_m)
+
+@app.post("/api/v1/multi-objective-routes")
+async def solve_multi_routes(req: MultiRouteRequest):
+    return optimization_engine.solve_multi_objective_routes(
+        origin_lat=req.origin_lat, origin_lon=req.origin_lon,
+        target_lat=req.target_lat, target_lon=req.target_lon, vessel_length_m=req.vessel_length_m
+    )
 
 @app.post("/api/v1/assess-trip")
 async def assess_trip(req: TripAssessmentRequest):
