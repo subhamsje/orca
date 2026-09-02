@@ -4,21 +4,22 @@ import { TodayView } from './components/TodayView';
 import { LivingChart } from './components/LivingChart';
 import { AskOrcaView } from './components/AskOrcaView';
 import { AuthorityView } from './components/AuthorityView';
+import { OsintView } from './components/OsintView';
 import { SystemDiagnostics } from './components/SystemDiagnostics';
 import { VesselProfileModal } from './components/VesselProfileModal';
 import { TripAssessmentResponse, VesselProfile } from './types';
 import { fetchTripAssessment } from './utils/api';
 import { INDIAN_HARBORS, HarborLocation } from './utils/harbors';
-import { ShieldCheck, Compass, Mic, Radio, Activity } from 'lucide-react';
+import { ShieldCheck, Compass, Mic, Radio, Eye, Activity } from 'lucide-react';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'today' | 'chart' | 'ask' | 'authority' | 'diagnostics'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'chart' | 'ask' | 'authority' | 'osint' | 'diagnostics'>('today');
   const [language, setLanguage] = useState<string>('Marathi');
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [isVesselModalOpen, setIsVesselModalOpen] = useState<boolean>(false);
   const [assessment, setAssessment] = useState<TripAssessmentResponse | null>(null);
 
-  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(INDIAN_HARBORS[0]); // Panaji, Goa default
+  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(INDIAN_HARBORS[0]);
 
   const [vesselProfile, setVesselProfile] = useState<VesselProfile>({
     vessel_id: 'IND-MH-04-892',
@@ -37,13 +38,13 @@ export function App() {
     let targetLon = harbor.lon;
 
     if (demoMode === 'safe') {
-      targetLat = 15.2993; // Goa Harbor
+      targetLat = 15.2993;
       targetLon = 73.8243;
     } else if (demoMode === 'danger') {
-      targetLat = 18.9220; // Mumbai Harbor
+      targetLat = 18.9220;
       targetLon = 72.8347;
     } else if (demoMode === 'cyclone') {
-      targetLat = 20.2644; // Paradip Coast
+      targetLat = 20.2644;
       targetLon = 86.6715;
     }
 
@@ -132,6 +133,7 @@ export function App() {
           />
         )}
         {activeTab === 'authority' && <AuthorityView />}
+        {activeTab === 'osint' && <OsintView />}
         {activeTab === 'diagnostics' && <SystemDiagnostics assessment={assessment} />}
       </main>
 
@@ -175,6 +177,16 @@ export function App() {
           >
             <Radio className="w-5 h-5" />
             <span>Authority</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('osint')}
+            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+              activeTab === 'osint' ? 'text-purple-400' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Eye className="w-5 h-5" />
+            <span>OSINT Hub</span>
           </button>
 
           <button
