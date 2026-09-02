@@ -14,6 +14,10 @@ import {
 import { TripAssessmentResponse } from '../types';
 import { useSpeech } from '../hooks/useSpeech';
 import { AudioButton, Button, Card, CardHeader, EmptyState, Skeleton, StatusBadge } from '../ui';
+import { OceanBathymetryChart } from './OceanBathymetryChart';
+import { VesselStabilityGauge } from './VesselStabilityGauge';
+import { SatellitePassRadar } from './SatellitePassRadar';
+import { LoRaPacketVisualizer } from './LoRaPacketVisualizer';
 
 interface TodayViewProps {
   assessment: TripAssessmentResponse | null;
@@ -115,6 +119,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Primary Seaworthiness Verdict Card */}
       <Card padding="lg" tone={tone === 'danger' ? 'accent' : 'default'}>
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="space-y-4 max-w-xl min-w-0">
@@ -187,6 +192,26 @@ export const TodayView: React.FC<TodayViewProps> = ({
         </div>
       </Card>
 
+      {/* Hydrodynamic Vessel Stability Twin & Ocean Bathymetry Sounder Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <VesselStabilityGauge
+          vesselLengthM={assessment.vessel_length_m}
+          waveHeightM={1.1}
+          rollAngleDeg={4.2}
+        />
+        <OceanBathymetryChart
+          currentDepthM={48.5}
+          vesselDraftM={0.8}
+        />
+      </div>
+
+      {/* Satellite Pass Radar & LoRa Hardware Visualizer Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SatellitePassRadar />
+        <LoRaPacketVisualizer />
+      </div>
+
+      {/* Habitat Suitability (HSI) Multi-Species Matrix */}
       <Card padding="md">
         <CardHeader
           title="Habitat suitability (HSI)"
@@ -217,6 +242,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
         </div>
       </Card>
 
+      {/* Eco-Economic ROI Docking Optimizer */}
       <Card padding="md">
         <CardHeader
           title="Eco-economic ROI"
