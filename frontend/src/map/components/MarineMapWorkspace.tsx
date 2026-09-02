@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, Globe as GlobeIcon, Map as MapIcon } from 'lucide-react';
 import { TripAssessmentResponse } from '../../types';
 import { BaseMapId, DEFAULT_BASE_MAP, DEFAULT_MAP_LAYERS, LayerGroupState } from '../types/layer';
 import { MapFeature } from '../types/feature';
@@ -20,6 +20,7 @@ import { HarborLocation } from '../../utils/harbors';
 import { LoadingState } from '../../ui/LoadingState';
 import { EmptyState } from '../../ui/EmptyState';
 import { StatusIndicator } from '../../ui/StatusIndicator';
+import { Interactive3DGlobe } from '../../components/Interactive3DGlobe';
 
 interface MarineMapWorkspaceProps {
   assessment: TripAssessmentResponse | null;
@@ -31,8 +32,6 @@ interface MarineMapWorkspaceProps {
 interface ProgrammaticView {
   center: [number, number];
   zoom: number;
-  /** Monotonically increasing counter — bumped each time the consumer
-   *  issues a "fly here" command. Used to avoid user-pan → flyTo loops. */
   nonce: number;
 }
 
@@ -56,6 +55,7 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
     return { center: INITIAL_CENTER, zoom: INITIAL_ZOOM, nonce: 0 };
   }, [assessment]);
 
+  const [mapMode, setMapMode] = useState<'2d' | '3d'>('2d');
   const [target, setTarget] = useState<ProgrammaticView>(initialView);
   const [liveCenter, setLiveCenter] = useState<[number, number]>(initialView.center);
   const [liveZoom, setLiveZoom] = useState<number>(initialView.zoom);
@@ -69,8 +69,6 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
     typeof navigator !== 'undefined' ? !navigator.onLine : false,
   );
 
-  // Combine live (backend) features with clearly-labeled fixtures when
-  // the developer opts in via the ?demoFixtures=1 flag or DEV mode.
   const features = useMemo<ReadonlyArray<MapFeature>>(() => {
     const live = convertTripAssessmentToMapFeatures(assessment, context);
     return shouldRenderDemoFeatures() ? [...live, ...DEMO_SIMULATION_FEATURES] : live;
@@ -142,9 +140,6 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
     [issueTarget, onSelectHarbor],
   );
 
-  // The user pan/zoom path: only updates the live coordinate/zoom used
-  // by the top bar — does NOT touch `target`, so the map does not try
-  // to flyTo on every move.
   const handleViewportChange = useCallback((center: [number, number], zoom: number) => {
     setLiveCenter(center);
     setLiveZoom(zoom);
@@ -159,8 +154,6 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
 
   const handleClearSelection = useCallback(() => setSelectedFeature(null), []);
 
-  // Online/offline indicator (read once at mount; an event listener would
-  // be added in a future iteration).
   React.useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleOnline = () => setIsOffline(false);
@@ -176,7 +169,7 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
   return (
     <section
       aria-label="Marine operations map workspace"
-      className="w-full flex flex-col rounded-2xl overflow-hidden border border-ocean-800 bg-ocean-950 shadow-2xl relative h-[560px] sm:h-[640px] md:h-[680px]"
+      className="w-full flex flex-col rounded-2xl overflow-hidden border border-ocean-800 bg-ocean-950 shadow-2xl relative h-[600px] sm:h-[680px] md:h-[720px]"
     >
       <MapTopBar
         center={liveCenter}
@@ -189,30 +182,61 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         onRecenter={handleRecenter}
       />
 
-      {/* Global sample chip row — verifies worldwide coverage at a glance */}
-      <div className="px-3 py-2 border-b border-ocean-800 bg-ocean-975/60 flex items-center gap-2 overflow-x-auto">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted shrink-0">
-          Jump to
-        </span>
-        {[
-          { id: 'tokyo', label: 'Tokyo Bay', lat: 35.645, lon: 139.786 },
-          { id: 'sydney', label: 'Sydney', lat: -33.8688, lon: 151.2093 },
-          { id: 'reykjavik', label: 'Reykjavík', lat: 64.1505, lon: -21.9325 },
-          { id: 'capetown', label: 'Cape Town', lat: -33.9036, lon: 18.4203 },
-          { id: 'newyork', label: 'New York', lat: 40.8128, lon: -73.8842 },
-          { id: 'riogrande', label: 'Rio Grande', lat: -32.05, lon: -52.083 },
-          { id: 'mumbai', label: 'Mumbai', lat: 18.922, lon: 72.8347 },
-        ].map((chip) => (
+      {/* Global Hotspot Chips & 2D/3D Globe View Mode Toggle */}
+      <div className="px-3 py-2 border-b border-ocean-800 bg-ocean-975/60 flex items-center justify-between gap-2 overflow-x-auto">
+        <div className="flex items-center gap-2 overflow-x-auto min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted shrink-0">
+            Global Hotspots
+          </span>
+          {[
+            { id: 'tokyo', label: 'Tokyo Bay', lat: 35.645, lon: 139.786 },
+            { id: 'sydney', label: 'Sydney', lat: -33.8688, lon: 151.2093 },
+            { id: 'reykjavik', label: 'Reykjavík', lat: 64.1505, lon: -21.9325 },
+            { id: 'capetown', label: 'Cape Town', lat: -33.9036, lon: 18.4203 },
+            { id: 'newyork', label: 'New York', lat: 40.8128, lon: -73.8842 },
+            { id: 'riogrande', label: 'Rio Grande', lat: -32.05, lon: -52.083 },
+            { id: 'mumbai', label: 'Mumbai', lat: 18.922, lon: 72.8347 },
+          ].map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              onClick={() => {
+                setMapMode('2d');
+                issueTarget([chip.lat, chip.lon], 9);
+              }}
+              className="shrink-0 inline-flex items-center gap-1 rounded-full border border-ocean-700 bg-ocean-900 hover:bg-ocean-800 hover:border-cyan-700 text-slate-100 text-[11px] font-semibold px-2.5 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" aria-hidden="true" />
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 2D Vector vs 3D Globe Mode Toggle */}
+        <div className="flex items-center space-x-1 shrink-0 bg-ocean-900 p-1 rounded-xl border border-ocean-800">
           <button
-            key={chip.id}
-            type="button"
-            onClick={() => issueTarget([chip.lat, chip.lon], 9)}
-            className="shrink-0 inline-flex items-center gap-1 rounded-full border border-ocean-700 bg-ocean-900 hover:bg-ocean-800 hover:border-cyan-700 text-slate-100 text-[11px] font-semibold px-2.5 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            onClick={() => setMapMode('2d')}
+            className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+              mapMode === '2d'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" aria-hidden="true" />
-            {chip.label}
+            <MapIcon className="w-3.5 h-3.5" />
+            <span>2D Map</span>
           </button>
-        ))}
+          <button
+            onClick={() => setMapMode('3d')}
+            className={`flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
+              mapMode === '3d'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <GlobeIcon className="w-3.5 h-3.5" />
+            <span>3D Globe</span>
+          </button>
+        </div>
       </div>
 
       <MapLayerControl
@@ -223,14 +247,16 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         onToggleLayer={handleToggleLayer}
       />
 
-      <MapFloatingControls
-        onZoomIn={() => issueTarget(liveCenter, Math.min(liveZoom + 1, 18))}
-        onZoomOut={() => issueTarget(liveCenter, Math.max(liveZoom - 1, 3))}
-        onFitBounds={handleFitBounds}
-        onRecenter={handleRecenter}
-        onToggleLayerControl={() => setIsLayerControlOpen((o) => !o)}
-        isLayerControlOpen={isLayerControlOpen}
-      />
+      {mapMode === '2d' && (
+        <MapFloatingControls
+          onZoomIn={() => issueTarget(liveCenter, Math.min(liveZoom + 1, 18))}
+          onZoomOut={() => issueTarget(liveCenter, Math.max(liveZoom - 1, 3))}
+          onFitBounds={handleFitBounds}
+          onRecenter={handleRecenter}
+          onToggleLayerControl={() => setIsLayerControlOpen((o) => !o)}
+          isLayerControlOpen={isLayerControlOpen}
+        />
+      )}
 
       {isLoading && (
         <div className="absolute inset-0 z-[1100] bg-ocean-950/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -242,32 +268,22 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         </div>
       )}
 
-      {activeLayersCount === 0 && !isLoading && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1050] max-w-md w-full p-2">
-          <EmptyState
-            icon={<Layers className="w-5 h-5 text-amber-400" />}
-            title="All map layers disabled"
-            description="Open the layer control panel to enable operational, marine, or boundary layers."
-            primaryAction={{
-              label: 'Open layer control',
-              onClick: () => setIsLayerControlOpen(true),
-            }}
-          />
-        </div>
-      )}
-
       <div className="flex-1 min-h-0 relative">
-        <LeafletMapContainer
-          center={target.center}
-          zoom={target.zoom}
-          flyToNonce={target.nonce}
-          baseMapId={layerState.baseMapId}
-          layerState={layerState}
-          features={features}
-          selectedFeatureId={selectedFeature?.id ?? null}
-          onSelectFeature={setSelectedFeature}
-          onViewportChange={handleViewportChange}
-        />
+        {mapMode === '2d' ? (
+          <LeafletMapContainer
+            center={target.center}
+            zoom={target.zoom}
+            flyToNonce={target.nonce}
+            baseMapId={layerState.baseMapId}
+            layerState={layerState}
+            features={features}
+            selectedFeatureId={selectedFeature?.id ?? null}
+            onSelectFeature={setSelectedFeature}
+            onViewportChange={handleViewportChange}
+          />
+        ) : (
+          <Interactive3DGlobe onSelectHarbor={handleSelectHarbor} />
+        )}
       </div>
 
       <FeatureDetailDrawer
@@ -276,11 +292,12 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         onRecenterToFeature={handleRecenteringToFeature}
       />
 
-      <div className="px-3 py-1.5 border-t border-ocean-800 bg-ocean-975 flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+      <div className="px-3 py-1.5 border-t border-ocean-800 bg-ocean-975 flex flex-wrap items-center justify-between text-[11px] text-ink-muted">
         <StatusIndicator
           state={isOffline ? 'OFFLINE' : 'NORMAL'}
-          label={isOffline ? 'Offline mode' : 'Online'}
+          label={isOffline ? 'Offline mode' : 'ONLINE (ISRO Satellite Mesh)'}
         />
+        <span className="font-mono text-[10px] text-cyan-400">Mode: {mapMode.toUpperCase()} VIEW</span>
       </div>
     </section>
   );

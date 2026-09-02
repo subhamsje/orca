@@ -10,7 +10,7 @@ import { SystemDiagnostics } from './components/SystemDiagnostics';
 import { VesselProfileModal } from './components/VesselProfileModal';
 import { TripAssessmentResponse, VesselProfile } from './types';
 import { fetchTripAssessment } from './utils/api';
-import { HarborLocation, INDIAN_HARBORS } from './utils/harbors';
+import { HarborLocation, GLOBAL_HARBORS } from './utils/harbors';
 
 const DEMO_COORDS: Record<string, { lat: number; lon: number }> = {
   safe: { lat: 15.2993, lon: 73.8243 },
@@ -19,13 +19,14 @@ const DEMO_COORDS: Record<string, { lat: number; lon: number }> = {
 };
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('today');
+  // Set default initial tab to 'chart' so the Map / 3D Globe is immediately active on load!
+  const [activeTab, setActiveTab] = useState<TabKey>('chart');
   const [language, setLanguage] = useState<string>('Marathi');
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [isVesselModalOpen, setIsVesselModalOpen] = useState<boolean>(false);
   const [assessment, setAssessment] = useState<TripAssessmentResponse | null>(null);
   const [isLoadingAssessment, setIsLoadingAssessment] = useState<boolean>(false);
-  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(INDIAN_HARBORS[0]);
+  const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(GLOBAL_HARBORS[0]);
 
   const [vesselProfile, setVesselProfile] = useState<VesselProfile>({
     vessel_id: 'IND-MH-04-892',
@@ -123,21 +124,21 @@ export function App() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="flex-1 max-w-5xl w-full mx-auto px-4 pt-4 pb-28"
+        className="flex-1 max-w-6xl w-full mx-auto px-4 pt-4 pb-28"
       >
+        {activeTab === 'chart' && (
+          <LivingChart
+            assessment={assessment}
+            onSelectHarbor={handleHarborSelect}
+            vesselProfile={vesselProfile}
+          />
+        )}
         {activeTab === 'today' && (
           <TodayView
             assessment={assessment}
             language={language}
             isLoading={isLoadingAssessment}
             onRefreshTrip={() => loadAssessment()}
-          />
-        )}
-        {activeTab === 'chart' && (
-          <LivingChart
-            assessment={assessment}
-            onSelectHarbor={handleHarborSelect}
-            vesselProfile={vesselProfile}
           />
         )}
         {activeTab === 'ask' && (
