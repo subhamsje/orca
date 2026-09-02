@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { Mic, MicOff, Volume2, Send, Sparkles, AlertCircle } from 'lucide-react';
+import { Mic, MicOff, Send, Sparkles } from 'lucide-react';
+import { useSpeech } from '../hooks/useSpeech';
+import {
+  isSpeechRecognitionSupported,
+  startVoiceRecognition,
+} from '../utils/speech';
+import { AudioButton, Button, Card, CardHeader, EmptyState, StatusBadge } from '../ui';
 
 interface AskOrcaViewProps {
   language: string;
@@ -7,149 +13,198 @@ interface AskOrcaViewProps {
   latestExplanation?: string;
 }
 
+const SAMPLE_QUERIES: Record<string, string> = {
+  Marathi: 'गोव्याजवळ हवामान आणि मासेमारी कशी आहे?',
+  Hindi: 'मुंबई के पास मछली पकड़ने के लिए आज मौसम कैसा है?',
+  Gujarati: 'વેરાવળ પાસે આજે માછીમારી માટે હવામાન કેવું છે?',
+  Tamil: 'சென்னை கடலில் இன்று மீன் பிடிக்க பாதுக்க safe?',
+  Telugu: 'విశాఖపట్నం వద్దే ఈరోజు చేపలు పట్టడానికి వాతావరణం ఎలా ఉంది?',
+  Malayalam: 'കൊച്ചിക്ക് സമീപം ഇന്ന് മത്സ്യബന്ധനത്തിന് കാലാവസ്ഥ എങ്ങനെ?',
+  Kannada: 'ಮಂಗಳೂರಿನ ಬಳಿ ಇಂದು ಮೀನುಗಾರಿಕೆಗೆ ಹವಾಮಾನ ಹೇಗಿದೆ?',
+  Bengali: 'পারাদ্বীপের কাছে আজ মাছ ধরার আবহাওয়া কেমন?',
+  English: 'Is it safe to fish near Goa today?',
+};
+
 export const AskOrcaView: React.FC<AskOrcaViewProps> = ({
   language,
   onQuerySubmit,
   latestExplanation,
 }) => {
-  const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [recognitionError, setRecognitionError] = useState<string | null>(null);
+  const speech = useSpeech(language);
 
-  const startVoiceInput = () => {
+  const handleMic = () => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    setRecognitionError(null);
     setIsListening(true);
-    // Web Speech API Voice Recognition
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.lang = language === 'Marathi' ? 'mr-IN' : language === 'Hindi' ? 'hi-IN' : 'en-US';
-      recognition.interimResults = false;
 
-      recognition.onresult = (event: any) => {
-        const text = event.results[0][0].transcript;
+    const result = startVoiceRecognition(language, {
+      onResult: (text) => {
         setTranscript(text);
         setIsListening(false);
         onQuerySubmit(text);
-      };
-
-      recognition.onerror = () => {
+      },
+      onError: (err) => {
         setIsListening(false);
-      };
+        setRecognitionError(
+          err === 'unsupported'
+            ? 'Voice input is not supported in this browser.'
+            : 'Could not capture audio. Try typing instead.',
+        );
+      },
+      onEnd: () => setIsListening(false),
+    });
 
-      recognition.start();
-    } else {
-      setTimeout(() => {
-        const sampleQuery = 'गोव्याजवळ हवामान आणि मासेमारी कशी आहे?';
-        setTranscript(sampleQuery);
-        setIsListening(false);
-        onQuerySubmit(sampleQuery);
-      }, 1500);
+    if (!result && !isSpeechRecognitionSupported()) {
+      setIsListening(false);
     }
   };
 
-  const playVoiceSynthesis = () => {
-    if (!latestExplanation) return;
-    setIsPlayingAudio(true);
-
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(latestExplanation);
-      utterance.lang =
-        language === 'Marathi'
-          ? 'mr-IN'
-          : language === 'Hindi'
-          ? 'hi-IN'
-          : language === 'Tamil'
-          ? 'ta-IN'
-          : language === 'Telugu'
-          ? 'te-IN'
-          : language === 'Gujarati'
-          ? 'gu-IN'
-          : 'en-US';
-
-      utterance.onend = () => setIsPlayingAudio(false);
-      utterance.onerror = () => setIsPlayingAudio(false);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      setTimeout(() => setIsPlayingAudio(false), 3000);
-    }
+  const handleSubmit = () => {
+    const trimmed = transcript.trim();
+    if (!trimmed) return;
+    onQuerySubmit(trimmed);
   };
+
+  const sample = SAMPLE_QUERIES[language] ?? SAMPLE_QUERIES.English;
 
   return (
-    <div className="p-4 space-y-6 max-w-2xl mx-auto">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-r from-cyan-950 via-ocean-900 to-ocean-950 border border-cyan-800 rounded-2xl p-6 shadow-xl text-center space-y-3">
-        <div className="inline-flex bg-cyan-900/80 p-3 rounded-full border border-cyan-700 text-cyan-300">
-          <Sparkles className="w-8 h-8 animate-spin" />
+    <div className="space-y-4 max-w-2xl mx-auto">
+      <Card padding="lg">
+        <div className="text-center space-y-3">
+          <div className="bg-cyan-950 border border-cyan-800 p-3 rounded-full inline-flex text-cyan-300">
+            <Sparkles className="w-6 h-6" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Ask ORCA</h2>
+            <p className="text-xs text-ink-muted mt-1">
+              Multilingual voice-first AI · 9 Indian coastal dialects
+            </p>
+          </div>
+          <div className="flex justify-center gap-2 flex-wrap">
+            <StatusBadge tone="info">{language}</StatusBadge>
+            <StatusBadge tone={isListening ? 'caution' : 'neutral'}>
+              {isListening ? 'Listening' : 'Ready'}
+            </StatusBadge>
+          </div>
         </div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">Ask ORCA (Multilingual Voice AI)</h2>
-        <p className="text-xs text-slate-300">
-          Ask questions in 8 Indian coastal dialects • Real-Time ISRO Oceanography Synthesis
-        </p>
-      </div>
 
-      {/* Voice Assistant Mic Button */}
-      <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-8 shadow-xl text-center space-y-6">
-        <div className="flex justify-center">
+        <div className="mt-6 flex justify-center">
           <button
-            onClick={startVoiceInput}
-            className={`p-8 rounded-full shadow-2xl transition transform active:scale-95 flex items-center justify-center border-4 ${
+            type="button"
+            onClick={handleMic}
+            aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+            aria-pressed={isListening}
+            className={[
+              'p-7 rounded-full border-4 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-400/60',
+              'active:scale-95',
               isListening
-                ? 'bg-red-600 border-red-400 animate-ping text-white'
-                : 'bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 hover:brightness-110 text-white'
-            }`}
+                ? 'bg-red-600 border-red-400 text-white'
+                : 'bg-cyan-600 border-cyan-400 text-white hover:bg-cyan-500',
+            ].join(' ')}
           >
-            {isListening ? <MicOff className="w-12 h-12" /> : <Mic className="w-12 h-12" />}
+            {isListening ? (
+              <MicOff className="w-10 h-10" aria-hidden="true" />
+            ) : (
+              <Mic className="w-10 h-10" aria-hidden="true" />
+            )}
           </button>
         </div>
 
-        <p className="text-xs font-semibold text-slate-300">
-          {isListening ? '🎙️ Listening... Speak your query clearly' : 'Tap the microphone to ask a voice question'}
+        <p className="mt-3 text-xs text-center text-ink-muted">
+          {isListening
+            ? '🎙️ Listening — speak your question clearly'
+            : 'Tap to speak, or type below'}
         </p>
 
-        {/* Text Input Fallback */}
-        <div className="flex items-center space-x-2">
+        {recognitionError && (
+          <p className="mt-2 text-xs text-center text-amber-300">{recognitionError}</p>
+        )}
+
+        <div className="mt-5 flex items-stretch gap-2">
+          <label htmlFor="orca-query" className="sr-only">
+            Ask ORCA
+          </label>
           <input
+            id="orca-query"
             type="text"
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
-            placeholder="or type your query here (e.g. 'Goa sea weather')..."
-            className="flex-1 bg-ocean-950 border border-ocean-800 text-slate-200 text-xs rounded-xl px-4 py-3 outline-none focus:border-cyan-500 font-medium"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
+            placeholder={`Try "${sample}"`}
+            className="flex-1 bg-ocean-950 border border-ocean-800 text-slate-100 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500 focus-visible:ring-2 focus-visible:ring-cyan-400"
           />
-          <button
-            onClick={() => transcript.trim() && onQuerySubmit(transcript)}
-            className="bg-cyan-600 hover:bg-cyan-500 text-white p-3 rounded-xl shadow-md font-bold transition"
+          <Button
+            type="button"
+            size="md"
+            leadingIcon={<Send className="w-4 h-4" />}
+            onClick={handleSubmit}
+            disabled={!transcript.trim()}
           >
-            <Send className="w-4 h-4" />
-          </button>
+            Ask
+          </Button>
         </div>
-      </div>
 
-      {/* Voice Explanation Output Card */}
-      {latestExplanation && (
-        <div className="bg-ocean-900 border border-cyan-800/80 rounded-2xl p-6 shadow-xl space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-cyan-300 flex items-center space-x-2">
-              <Sparkles className="w-4 h-4" />
-              <span>Synthesized Response ({language}):</span>
-            </h3>
-            <button
-              onClick={playVoiceSynthesis}
-              className={`flex items-center space-x-1.5 text-xs px-3 py-1.5 rounded-lg font-bold border transition ${
-                isPlayingAudio
-                  ? 'bg-emerald-900 text-emerald-300 border-emerald-700 animate-pulse'
-                  : 'bg-cyan-900 hover:bg-cyan-800 text-cyan-200 border-cyan-700'
-              }`}
-            >
-              <Volume2 className="w-4 h-4" />
-              <span>{isPlayingAudio ? 'Playing Audio...' : 'Listen Audio'}</span>
-            </button>
-          </div>
-
-          <p className="text-sm text-slate-200 leading-relaxed font-medium bg-ocean-950/60 p-4 rounded-xl border border-ocean-800">
-            "{latestExplanation}"
+        <div className="mt-4">
+          <p className="text-[11px] uppercase tracking-wider text-ink-muted font-bold mb-2">
+            Try a sample question
           </p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(SAMPLE_QUERIES)
+              .slice(0, 5)
+              .map(([lang, query]) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => setTranscript(query)}
+                  className="text-[11px] font-medium text-slate-200 bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 rounded-full px-3 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                >
+                  {lang}
+                </button>
+              ))}
+          </div>
         </div>
+      </Card>
+
+      {latestExplanation ? (
+        <Card padding="md">
+          <CardHeader
+            title={`Latest response (${language})`}
+            icon={<Sparkles className="w-4 h-4 text-cyan-400" />}
+            badge={
+              <AudioButton
+                isPlaying={speech.isPlaying}
+                onPlay={() => speech.play(latestExplanation)}
+                onStop={speech.stop}
+                label="Listen"
+                variant="cyan"
+                size="sm"
+              />
+            }
+          />
+          <p className="mt-3 text-sm text-slate-100 leading-relaxed bg-ocean-950/60 p-4 rounded-xl border border-ocean-800">
+            “{latestExplanation}”
+          </p>
+        </Card>
+      ) : (
+        <Card padding="md">
+          <EmptyState
+            icon={<Sparkles className="w-5 h-5" />}
+            title="No response yet"
+            description="Ask a question above to receive a plain-language explanation in your selected dialect."
+          />
+        </Card>
       )}
     </div>
   );

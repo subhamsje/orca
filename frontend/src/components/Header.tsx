@@ -1,7 +1,28 @@
-import React from 'react';
-import { Anchor, Ship, Wifi, MapPin, AlertCircle } from 'lucide-react';
+import React, { useId } from 'react';
+import {
+  AlertTriangle,
+  Anchor,
+  MapPin,
+  Ship,
+  WifiOff,
+  Wifi,
+  Globe,
+} from 'lucide-react';
 import { VesselProfile } from '../types';
-import { INDIAN_HARBORS, HarborLocation } from '../utils/harbors';
+import { HarborLocation, INDIAN_HARBORS } from '../utils/harbors';
+import { Button, StatusBadge } from '../ui';
+
+export const SUPPORTED_LANGUAGES = [
+  { code: 'Marathi', native: 'मराठी', region: 'Koli / Malvani' },
+  { code: 'Hindi', native: 'हिन्दी', region: 'Standard' },
+  { code: 'Gujarati', native: 'ગુજરાતી', region: 'Standard' },
+  { code: 'Tamil', native: 'தமிழ்', region: 'Standard' },
+  { code: 'Telugu', native: 'తెలుగు', region: 'Standard' },
+  { code: 'Malayalam', native: 'മലയാളം', region: 'Standard' },
+  { code: 'Kannada', native: 'ಕನ್ನಡ', region: 'Standard' },
+  { code: 'Bengali', native: 'বাংলা', region: 'Standard' },
+  { code: 'English', native: 'English', region: 'Standard' },
+] as const;
 
 interface HeaderProps {
   vesselProfile: VesselProfile;
@@ -26,119 +47,150 @@ export const Header: React.FC<HeaderProps> = ({
   selectedHarbor,
   onSelectHarbor,
 }) => {
+  const harborListId = useId();
+  const langListId = useId();
+
   return (
-    <div className="sticky top-0 z-50">
-      {/* Persistent Demo Mode Banner */}
+    <div className="sticky top-0 z-40">
       {isDemoMode && (
-        <div className="bg-gradient-to-r from-amber-950 via-amber-900 to-amber-950 text-amber-300 border-b border-amber-800 px-4 py-1.5 text-xs flex items-center justify-between font-medium">
-          <div className="flex items-center space-x-2">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>
-              <strong>DEMO MODE ACTIVE</strong> — Running simulated satellite & ocean model feeds for SIH Judging
+        <div className="bg-amber-950/90 border-b border-amber-900 px-4 py-1.5 text-[11px] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-amber-300 font-medium min-w-0">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" aria-hidden="true" />
+            <span className="truncate">
+              <strong className="font-bold">Demo Mode</strong>
+              <span className="text-amber-400/80"> · simulated satellite & ocean feeds</span>
             </span>
           </div>
           {onSelectDemoPreset && (
-            <div className="flex items-center space-x-1.5 overflow-x-auto">
-              <span className="text-slate-400 text-[10px] uppercase font-bold hidden md:inline">Presets:</span>
+            <div
+              role="group"
+              aria-label="Demo scenario presets"
+              className="flex items-center gap-1.5 overflow-x-auto"
+            >
               <button
+                type="button"
                 onClick={() => onSelectDemoPreset('safe')}
-                className="bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700 text-[11px] px-2 py-0.5 rounded font-bold transition"
+                className="rounded-md border border-emerald-800 bg-emerald-950 hover:bg-emerald-900 text-emerald-200 text-[11px] font-bold px-2 py-0.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
-                Goa Safe
+                Goa · Safe
               </button>
               <button
+                type="button"
                 onClick={() => onSelectDemoPreset('danger')}
-                className="bg-amber-900/80 hover:bg-amber-800 text-amber-200 border border-amber-700 text-[11px] px-2 py-0.5 rounded font-bold transition"
+                className="rounded-md border border-amber-800 bg-amber-950 hover:bg-amber-900 text-amber-200 text-[11px] font-bold px-2 py-0.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
               >
-                Mumbai High Swell
+                Mumbai · High Swell
               </button>
               <button
+                type="button"
                 onClick={() => onSelectDemoPreset('cyclone')}
-                className="bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-700 text-[11px] px-2 py-0.5 rounded font-bold transition"
+                className="rounded-md border border-red-800 bg-red-950 hover:bg-red-900 text-red-200 text-[11px] font-bold px-2 py-0.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
-                Paradip Cyclone
+                Paradip · Cyclone
               </button>
             </div>
           )}
         </div>
       )}
 
-      <header className="bg-ocean-900 border-b border-ocean-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2 shadow-lg">
-        <div className="flex items-center space-x-3">
-          <div className="bg-cyan-600 p-2 rounded-xl text-white shadow-md">
-            <Anchor className="w-6 h-6 animate-pulse" />
+      <header className="bg-ocean-975/95 backdrop-blur-md border-b border-ocean-800">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="bg-cyan-600 p-2 rounded-xl text-white shrink-0 shadow-card">
+              <Anchor className="w-5 h-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-2 truncate">
+                <span>ORCA</span>
+                <span className="hidden sm:inline text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-800 font-semibold">
+                  SIH26176
+                </span>
+              </h1>
+              <p className="text-[11px] text-ink-muted truncate">
+                ISRO Marine Ecosystem Intelligence
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center space-x-2">
-              <span>ORCA</span>
-              <span className="text-xs bg-cyan-900 text-cyan-300 px-2 py-0.5 rounded-full border border-cyan-700">
-                SIH26176
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2 shrink-0">
+            <StatusBadge tone={isOffline ? 'caution' : 'safe'} className="hidden md:inline-flex">
+              {isOffline ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+              {isOffline ? 'Offline' : 'Online'}
+            </StatusBadge>
+
+            <button
+              type="button"
+              onClick={onOpenVesselModal}
+              aria-label={`Vessel profile · ${vesselProfile.vessel_name} · ${vesselProfile.length_m} meters`}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-ocean-700 bg-ocean-800 hover:bg-ocean-700 text-slate-100 text-xs font-semibold px-2.5 py-1.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+            >
+              <Ship className="w-4 h-4 text-cyan-400" aria-hidden="true" />
+              <span className="hidden md:inline max-w-[10rem] truncate">
+                {vesselProfile.vessel_name}
               </span>
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">ISRO Marine Ecosystem Intelligence</p>
+              <span className="text-cyan-300">{vesselProfile.length_m}m</span>
+            </button>
+
+            <label className="relative" htmlFor={langListId}>
+              <span className="sr-only">Select language</span>
+              <Globe
+                className="w-3.5 h-3.5 text-ink-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                aria-hidden="true"
+              />
+              <select
+                id={langListId}
+                value={language}
+                onChange={(e) => onLanguageChange(e.target.value)}
+                className="appearance-none bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 text-slate-100 text-xs font-semibold pl-7 pr-7 py-1.5 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
+              >
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <option
+                    key={lang.code}
+                    value={lang.code}
+                    className="bg-ocean-900 text-white"
+                  >
+                    {lang.native}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Harbor Location Quick Switcher */}
-          <div className="flex items-center space-x-1.5 bg-ocean-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700">
-            <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
-            <select
-              value={selectedHarbor.id}
-              onChange={(e) => {
-                const found = INDIAN_HARBORS.find((h) => h.id === e.target.value);
-                if (found) onSelectHarbor(found);
-              }}
-              aria-label="Select Coastal Harbor"
-              className="bg-transparent text-slate-200 text-xs font-bold outline-none cursor-pointer"
-            >
-              {INDIAN_HARBORS.map((h) => (
-                <option key={h.id} value={h.id} className="bg-ocean-900 text-white">
-                  📍 {h.name} ({h.state})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Network Connectivity Badge */}
-          <div
-            className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-full font-semibold border ${
-              isOffline
-                ? 'bg-amber-950/80 text-amber-400 border-amber-800'
-                : 'bg-emerald-950/80 text-emerald-400 border-emerald-800'
-            }`}
-          >
-            <Wifi className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isOffline ? 'OFFLINE PWA' : 'ONLINE (ISRO)'}</span>
-          </div>
-
-          {/* Vessel Profile Button */}
-          <button
-            onClick={onOpenVesselModal}
-            className="flex items-center space-x-1 bg-ocean-800 hover:bg-ocean-700 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700 transition"
-          >
-            <Ship className="w-4 h-4 text-cyan-400" />
-            <span className="font-semibold hidden sm:inline">{vesselProfile.vessel_name}</span>
-            <span className="text-cyan-300 font-bold">({vesselProfile.length_m}m)</span>
-          </button>
-
-          {/* 8-Language Switcher */}
+        <div className="max-w-5xl mx-auto px-4 pb-3 flex items-center gap-2 text-xs">
+          <MapPin className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
+          <label htmlFor={harborListId} className="sr-only">
+            Select harbor
+          </label>
           <select
-            value={language}
-            onChange={(e) => onLanguageChange(e.target.value)}
-            aria-label="Select Dialect Language"
-            className="bg-ocean-800 text-slate-200 text-xs px-2.5 py-1.5 rounded-lg border border-ocean-700 font-medium outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+            id={harborListId}
+            value={selectedHarbor.id}
+            onChange={(e) => {
+              const found = INDIAN_HARBORS.find((h) => h.id === e.target.value);
+              if (found) onSelectHarbor(found);
+            }}
+            className="flex-1 sm:flex-none sm:min-w-[18rem] bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 text-slate-100 text-xs font-semibold px-2.5 py-1.5 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 cursor-pointer"
           >
-            <option value="Marathi">मराठी (Koli/Malvani)</option>
-            <option value="Hindi">हिन्दी</option>
-            <option value="Gujarati">ગુજરાતી</option>
-            <option value="Tamil">தமிழ்</option>
-            <option value="Telugu">తెలుగు</option>
-            <option value="Malayalam">മലയാളം</option>
-            <option value="Kannada">ಕನ್ನಡ</option>
-            <option value="Bengali">বাংলা</option>
-            <option value="English">English</option>
+            {INDIAN_HARBORS.map((h) => (
+              <option key={h.id} value={h.id} className="bg-ocean-900 text-white">
+                {h.name} · {h.state}
+              </option>
+            ))}
           </select>
+          <span className="hidden lg:inline text-ink-subtle truncate">
+            {selectedHarbor.description}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            leadingIcon={<Ship className="w-3.5 h-3.5" />}
+            className="sm:hidden ml-auto"
+            onClick={onOpenVesselModal}
+          >
+            {vesselProfile.length_m}m
+          </Button>
         </div>
       </header>
     </div>

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Header } from './components/Header';
+import { BottomNav, TabKey } from './components/BottomNav';
 import { TodayView } from './components/TodayView';
 import { LivingChart } from './components/LivingChart';
 import { AskOrcaView } from './components/AskOrcaView';
@@ -9,16 +10,21 @@ import { SystemDiagnostics } from './components/SystemDiagnostics';
 import { VesselProfileModal } from './components/VesselProfileModal';
 import { TripAssessmentResponse, VesselProfile } from './types';
 import { fetchTripAssessment } from './utils/api';
-import { INDIAN_HARBORS, HarborLocation } from './utils/harbors';
-import { ShieldCheck, Compass, Mic, Radio, Eye, Activity } from 'lucide-react';
+import { HarborLocation, INDIAN_HARBORS } from './utils/harbors';
+
+const DEMO_COORDS: Record<string, { lat: number; lon: number }> = {
+  safe: { lat: 15.2993, lon: 73.8243 },
+  danger: { lat: 18.922, lon: 72.8347 },
+  cyclone: { lat: 20.2644, lon: 86.6715 },
+};
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'today' | 'chart' | 'ask' | 'authority' | 'osint' | 'diagnostics'>('today');
+  const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [language, setLanguage] = useState<string>('Marathi');
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [isVesselModalOpen, setIsVesselModalOpen] = useState<boolean>(false);
   const [assessment, setAssessment] = useState<TripAssessmentResponse | null>(null);
-
+  const [isLoadingAssessment, setIsLoadingAssessment] = useState<boolean>(false);
   const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(INDIAN_HARBORS[0]);
 
   const [vesselProfile, setVesselProfile] = useState<VesselProfile>({
@@ -29,42 +35,38 @@ export function App() {
     fuel_capacity_l: 60,
   });
 
-  const loadAssessment = async (overrideScenario?: string, targetHarbor?: HarborLocation) => {
-    const harbor = targetHarbor || selectedHarbor;
-    const urlParams = new URLSearchParams(window.location.search);
-    const demoMode = overrideScenario || urlParams.get('demo');
+  const loadAssessment = useCallback(
+    async (overrideScenario?: string, targetHarbor?: HarborLocation) => {
+      const harbor = targetHarbor ?? selectedHarbor;
+      const urlParams = new URLSearchParams(window.location.search);
+      const demoMode = overrideScenario ?? urlParams.get('demo');
 
-    let targetLat = harbor.lat;
-    let targetLon = harbor.lon;
+      const coords = demoMode && DEMO_COORDS[demoMode]
+        ? DEMO_COORDS[demoMode]
+        : { lat: harbor.lat, lon: harbor.lon };
 
-    if (demoMode === 'safe') {
-      targetLat = 15.2993;
-      targetLon = 73.8243;
-    } else if (demoMode === 'danger') {
-      targetLat = 18.9220;
-      targetLon = 72.8347;
-    } else if (demoMode === 'cyclone') {
-      targetLat = 20.2644;
-      targetLon = 86.6715;
-    }
+      setIsLoadingAssessment(true);
+      const data = await fetchTripAssessment(
+        coords.lat,
+        coords.lon,
+        vesselProfile.length_m,
+        language,
+      );
 
-    const data = await fetchTripAssessment(
-      targetLat,
-      targetLon,
-      vesselProfile.length_m,
-      language
-    );
+      if (demoMode === 'cyclone') {
+        data.circuit_breaker_triggered = true;
+        data.verdict = 'EXTREME DANGER / STAY ASHORE';
+        data.risk_score = 100;
+        data.override_reason = 'Official IMD Cyclone Advisory Override Active (Paradip Sector)';
+        data.explanation.plain_language_text =
+          '⚠️ धोका इशारा! चक्रीवादळाचा इशारा लागू आहे. आज समुद्रात जाऊ नका.';
+      }
 
-    if (demoMode === 'cyclone') {
-      data.circuit_breaker_triggered = true;
-      data.verdict = 'EXTREME DANGER / STAY ASHORE';
-      data.risk_score = 100;
-      data.override_reason = 'Official IMD Cyclone Advisory Override Active (Paradip Sector)';
-      data.explanation.plain_language_text = '⚠️ धोका इशारा! चक्रीवादळाचा इशारा लागू आहे. आज समुद्रात जाऊ नका.';
-    }
-
-    setAssessment(data);
-  };
+      setAssessment(data);
+      setIsLoadingAssessment(false);
+    },
+    [language, selectedHarbor, vesselProfile.length_m],
+  );
 
   useEffect(() => {
     loadAssessment();
@@ -79,7 +81,7 @@ export function App() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [language, vesselProfile, selectedHarbor]);
+  }, [loadAssessment]);
 
   const handleHarborSelect = (harbor: HarborLocation) => {
     setSelectedHarbor(harbor);
@@ -92,38 +94,47 @@ export function App() {
       selectedHarbor.lon,
       vesselProfile.length_m,
       language,
-      queryText
+      queryText,
     );
     setAssessment(data);
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-ocean-950 pb-20">
+    <div className="min-h-screen flex flex-col bg-ocean-950">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:bg-cyan-700 focus:text-white focus:px-3 focus:py-2 focus:rounded-md"
+      >
+        Skip to main content
+      </a>
+
       <Header
         vesselProfile={vesselProfile}
         onOpenVesselModal={() => setIsVesselModalOpen(true)}
         language={language}
         onLanguageChange={setLanguage}
         isOffline={isOffline}
-        isDemoMode={true}
+        isDemoMode
         onSelectDemoPreset={(scenario) => loadAssessment(scenario)}
         selectedHarbor={selectedHarbor}
         onSelectHarbor={handleHarborSelect}
       />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 max-w-5xl w-full mx-auto px-4 pt-4 pb-28"
+      >
         {activeTab === 'today' && (
           <TodayView
             assessment={assessment}
             language={language}
+            isLoading={isLoadingAssessment}
             onRefreshTrip={() => loadAssessment()}
           />
         )}
         {activeTab === 'chart' && (
-          <LivingChart
-            assessment={assessment}
-            onSelectHarbor={handleHarborSelect}
-          />
+          <LivingChart assessment={assessment} onSelectHarbor={handleHarborSelect} />
         )}
         {activeTab === 'ask' && (
           <AskOrcaView
@@ -134,72 +145,12 @@ export function App() {
         )}
         {activeTab === 'authority' && <AuthorityView />}
         {activeTab === 'osint' && <OsintView />}
-        {activeTab === 'diagnostics' && <SystemDiagnostics assessment={assessment} />}
+        {activeTab === 'diagnostics' && (
+          <SystemDiagnostics assessment={assessment} />
+        )}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-ocean-900/95 backdrop-blur-md border-t border-ocean-800 px-2 py-2 z-40">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <button
-            onClick={() => setActiveTab('today')}
-            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
-              activeTab === 'today' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ShieldCheck className="w-5 h-5" />
-            <span>Today's Trip</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('chart')}
-            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
-              activeTab === 'chart' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Compass className="w-5 h-5" />
-            <span>Living Map</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('ask')}
-            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
-              activeTab === 'ask' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Mic className="w-5 h-5" />
-            <span>Ask ORCA</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('authority')}
-            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
-              activeTab === 'authority' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Radio className="w-5 h-5" />
-            <span>Authority</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('osint')}
-            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
-              activeTab === 'osint' ? 'text-purple-400' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Eye className="w-5 h-5" />
-            <span>OSINT Hub</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('diagnostics')}
-            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
-              activeTab === 'diagnostics' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Activity className="w-5 h-5" />
-            <span>Diagnostics</span>
-          </button>
-        </div>
-      </nav>
+      <BottomNav active={activeTab} onSelect={setActiveTab} />
 
       <VesselProfileModal
         isOpen={isVesselModalOpen}
