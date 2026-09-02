@@ -138,4 +138,4 @@ export const DEFAULT_MAP_LAYERS: Record<string, MapLayerConfig> = {
   },
 };
 
-export const DEFAULT_BASE_MAP: BaseMapId = 'nautical_dark';
+export const DEFAULT_BASE_MAP: BaseMapId = 'osm_standard';
