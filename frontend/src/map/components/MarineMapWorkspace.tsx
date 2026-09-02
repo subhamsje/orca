@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Layers, WifiOff, Wifi } from 'lucide-react';
+import { Layers } from 'lucide-react';
 import { TripAssessmentResponse } from '../../types';
 import { BaseMapId, DEFAULT_BASE_MAP, DEFAULT_MAP_LAYERS, LayerGroupState } from '../types/layer';
 import { MapFeature } from '../types/feature';
@@ -19,7 +19,6 @@ import { FeatureDetailDrawer } from './FeatureDetailDrawer';
 import { HarborLocation } from '../../utils/harbors';
 import { LoadingState } from '../../ui/LoadingState';
 import { EmptyState } from '../../ui/EmptyState';
-import { Button } from '../../ui/Button';
 import { StatusIndicator } from '../../ui/StatusIndicator';
 
 interface MarineMapWorkspaceProps {
@@ -199,8 +198,8 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
       />
 
       <MapFloatingControls
-        onZoomIn={() => issueTarget(target.center, Math.min(target.zoom + 1, 18))}
-        onZoomOut={() => issueTarget(target.center, Math.max(target.zoom - 1, 3))}
+        onZoomIn={() => issueTarget(liveCenter, Math.min(liveZoom + 1, 18))}
+        onZoomOut={() => issueTarget(liveCenter, Math.max(liveZoom - 1, 3))}
         onFitBounds={handleFitBounds}
         onRecenter={handleRecenter}
         onToggleLayerControl={() => setIsLayerControlOpen((o) => !o)}
@@ -256,16 +255,6 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
           state={isOffline ? 'OFFLINE' : 'NORMAL'}
           label={isOffline ? 'Offline mode' : 'Online'}
         />
-        <Button
-          size="sm"
-          variant="ghost"
-          leadingIcon={isOffline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-          onClick={() => setIsOffline((o) => !o)}
-          aria-label="Toggle simulated network state for accessibility testing"
-          className="text-[11px] px-2 py-0.5"
-        >
-          Toggle network (dev)
-        </Button>
       </div>
     </section>
   );

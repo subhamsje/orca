@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Activity,
   Clock,
@@ -37,6 +37,18 @@ export const FeatureDetailDrawer: React.FC<FeatureDetailDrawerProps> = ({
   onClose,
   onRecenterToFeature,
 }) => {
+  useEffect(() => {
+    if (!feature) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [feature, onClose]);
+
   if (!feature) return null;
   const stateMeta = OPERATIONAL_STATE_META[feature.state] ?? OPERATIONAL_STATE_META.NORMAL;
 
