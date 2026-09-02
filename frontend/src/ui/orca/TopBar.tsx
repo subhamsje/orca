@@ -90,12 +90,12 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="ml-1 sm:ml-3 flex-1 max-w-md flex items-center gap-2 rounded-xl bg-ocean-1000/60 border border-cyan-500/20 hover:border-cyan-500/40 px-3 py-2 text-xs text-ink-muted hover:text-cyan-200 transition group"
+          className="ml-1 sm:ml-3 flex-1 max-w-xs sm:max-w-sm flex items-center gap-2 rounded-xl bg-ocean-1000/60 border border-cyan-500/20 hover:border-cyan-500/40 px-3 py-2 text-xs text-ink-muted hover:text-cyan-200 transition group"
           aria-label="Open command palette"
         >
-          <Search className="w-3.5 h-3.5 text-cyan-300" />
-          <span className="truncate">Search harbors, paste coordinates…</span>
-          <span className="ml-auto chip text-[9px]">
+          <Search className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+          <span className="truncate">Search or paste coords…</span>
+          <span className="ml-auto chip text-[9px] shrink-0">
             {modKey}K
           </span>
         </button>
@@ -170,31 +170,27 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Sub-strip: live coordinate readout + freshness */}
-      <div className="px-4 sm:px-5 py-1.5 border-t border-cyan-500/10 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] uppercase tracking-[0.16em] font-bold text-ink-muted">
-        <span className="flex items-center gap-1.5">
-          <Globe className="w-3 h-3 text-cyan-300" />
+      <div className="px-4 sm:px-5 py-1.5 border-t border-cyan-500/10 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.14em] font-bold text-ink-muted">
+        <span className="flex items-center gap-1.5 text-cyan-300/90">
+          <Globe className="w-3 h-3" />
           {assessment
             ? formatLatLon(assessment.coordinate.lat, assessment.coordinate.lon)
             : selectedHarbor
               ? formatLatLon(selectedHarbor.lat, selectedHarbor.lon)
               : '—'}
         </span>
-        <span className="text-cyan-300/80">
-          {assessment
-            ? `${assessment.explanation.provenance_summary.satellites.length} SATS · ${assessment.explanation.provenance_summary.ocean_models.length} MODELS`
-            : 'STANDBY'}
-        </span>
         {assessment && (
-          <span className="flex items-center gap-1.5 text-emerald-300/80">
-            <Radio className="w-3 h-3 animate-pulse" />
-            {assessment.provenance.data_freshness} · {formatRelativeTime(assessment.provenance.generated_at)}
-          </span>
+          <>
+            <span className="text-cyan-300/60">
+              {assessment.explanation.provenance_summary.satellites.length} sats ·{' '}
+              {assessment.explanation.provenance_summary.ocean_models.length} models
+            </span>
+            <span className="flex items-center gap-1.5 text-emerald-300/80">
+              <Radio className="w-3 h-3 animate-pulse" />
+              {assessment.provenance.data_freshness}
+            </span>
+          </>
         )}
-        <span className="ml-auto flex items-center gap-2">
-          <Command className="w-3 h-3 text-cyan-300" />
-          <kbd className="rounded bg-ocean-1000 px-1.5 py-0.5 text-[9px] font-mono">{modKey}K</kbd>
-          <span>cmd</span>
-        </span>
       </div>
     </header>
   );

@@ -26,7 +26,6 @@ function useMacLike(): boolean {
 
 export function App() {
   const isMac = useMacLike();
-  const modKey = isMac ? '⌘' : 'Ctrl';
 
   const [selectedHarbor, setSelectedHarbor] = useState<HarborLocation>(GLOBAL_HARBORS[3]); // Mumbai Sassoon Dock
   const [assessment, setAssessment] = useState<TripAssessmentResponse | null>(null);
@@ -204,7 +203,7 @@ export function App() {
       </div>
 
       {/* Left intel rail */}
-      <aside className="absolute left-3 top-[5.25rem] bottom-20 z-20 w-[24rem] max-w-[calc(100vw-1.5rem)] hidden lg:flex flex-col gap-3 pointer-events-none overflow-y-auto pr-1">
+      <aside className="absolute left-3 top-[5.25rem] bottom-20 z-20 w-[22rem] max-w-[calc(100vw-1.5rem)] hidden xl:flex flex-col gap-3 pointer-events-none overflow-y-auto pr-1">
         <div className="pointer-events-auto">
           <VerdictHero
             assessment={assessment}
@@ -243,7 +242,7 @@ export function App() {
       </aside>
 
       {/* Right rail — global harbor directory */}
-      <aside className="absolute right-3 top-[5.5rem] bottom-3 z-20 w-[20rem] max-w-[calc(100vw-1.5rem)] hidden xl:flex flex-col pointer-events-none">
+      <aside className="absolute right-3 top-[5.25rem] bottom-20 z-20 w-[18rem] max-w-[calc(100vw-1.5rem)] hidden 2xl:flex flex-col pointer-events-none">
         <div className="pointer-events-auto h-full">
           <GlobalHarborDirectory
             selectedHarborId={selectedHarbor.id}
@@ -262,31 +261,29 @@ export function App() {
         </div>
       </aside>
 
-      {/* Bottom strip — quick actions & status */}
-      <footer className="absolute bottom-0 inset-x-0 z-20 px-3 pb-3 pt-12 pointer-events-none">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
-          <div className="glass rounded-2xl px-3 py-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] font-bold text-cyan-200">
-            <span className="dot bg-emerald-400 animate-pulse-soft" />
-            ORCA-MultiObjective-v4.0 · {assessment?.telemetry.execution_ms?.toFixed(0) ?? '—'} ms
-          </div>
-          <div className="glass rounded-2xl px-3 py-2 flex items-center gap-3 text-[10px] uppercase tracking-[0.16em] font-bold text-ink-muted">
-            <span className="hidden md:inline">Press</span>
-            <kbd className="rounded bg-ocean-1000 px-1.5 py-0.5 text-cyan-300 font-mono text-[10px]">
-              {modKey}K
-            </kbd>
-            <span>for command palette</span>
-          </div>
+      {/* Bottom status chip — single floating element */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+        <div className="glass rounded-full px-4 py-1.5 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] font-bold text-cyan-200">
+          <span className="dot bg-emerald-400 animate-pulse-soft" />
+          ORCA-MultiObjective-v4.0 · {assessment?.telemetry.execution_ms?.toFixed(0) ?? '—'} ms ·{' '}
+          {assessment?.telemetry.services_triggered.length ?? 0} agents
         </div>
-      </footer>
+      </div>
 
-      {/* Mobile / tablet fallbacks: full-screen panels */}
-      <div className="absolute inset-x-3 bottom-16 z-20 lg:hidden pointer-events-auto space-y-3 max-h-[60vh] overflow-y-auto pb-2">
-        <VerdictHero
-          assessment={assessment}
-          language={language}
-          isLoading={isLoadingAssessment}
-          onRefresh={handleRefresh}
-        />
+      {/* Center floating summary card (visible at lg+ where rails aren't shown) */}
+      <div className="absolute left-3 right-3 top-[5.25rem] z-20 xl:hidden pointer-events-none">
+        <div className="pointer-events-auto max-w-md">
+          <VerdictHero
+            assessment={assessment}
+            language={language}
+            isLoading={isLoadingAssessment}
+            onRefresh={handleRefresh}
+          />
+        </div>
+      </div>
+
+      {/* Mobile fallback: only show verdict + vitals as bottom drawer */}
+      <div className="absolute inset-x-3 bottom-16 z-20 lg:hidden xl:hidden pointer-events-auto space-y-3 max-h-[60vh] overflow-y-auto pb-2">
         <OceanVitals assessment={assessment} />
         <MultiObjectiveRoutePicker
           routes={assessment?.multi_objective_routes}
