@@ -15,4 +15,6 @@ export { ForecastTimeline } from './ForecastTimeline';
 export { CycloneAlertBanner } from './CycloneAlertBanner';
 export { VesselSeaworthinessGauge } from './VesselSeaworthinessGauge';
 export { CatchReportForm } from './CatchReportForm';
+export { ProvenanceBadge } from './ProvenanceBadge';
+export { ProvenanceSourcePanel } from './ProvenanceSourcePanel';
 export type { MapStageHandle } from './MapStage';

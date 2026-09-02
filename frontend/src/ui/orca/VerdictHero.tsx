@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import {
+  AlertCircle,
   Anchor,
   AudioLines,
   Compass,
@@ -116,6 +117,9 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
   const { verdict, risk_score, circuit_breaker_triggered, override_reason } = assessment;
   const explanation = assessment.explanation;
   const isOffline = assessment.provenance.status === 'OFFLINE';
+  const isDataUnavailable =
+    assessment.canonical_data_unavailable &&
+    assessment.canonical_data_unavailable.length > 0;
 
   return (
     <section
@@ -152,6 +156,11 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
           </span>
         )}
         {isOffline && <span className="chip chip-amber">OFFLINE FALLBACK</span>}
+        {isDataUnavailable && (
+          <span className="chip chip-amber" title="Some parameters had no live source">
+            <AlertCircle className="w-3 h-3" /> PARTIAL DATA
+          </span>
+        )}
         <span className="chip chip-cyan">
           <Sparkles className="w-3 h-3" /> {Math.round((assessment.provenance.confidence || 0) * 100)}% confidence
         </span>

@@ -12,6 +12,7 @@ import {
   MultiObjectiveRoutePicker,
   OceanVitals,
   OsintPanel,
+  ProvenanceSourcePanel,
   SpeciesMatrixPanel,
   TopBar,
   VerdictHero,
@@ -262,7 +263,7 @@ export function App() {
 
       {/* Right rail — global harbor directory */}
       <aside className="absolute right-3 top-[5.25rem] bottom-20 z-20 w-[18rem] max-w-[calc(100vw-1.5rem)] hidden 2xl:flex flex-col gap-3 pointer-events-none">
-        <div className="pointer-events-auto h-2/5 min-h-[18rem]">
+        <div className="pointer-events-auto h-2/5 min-h-[16rem]">
           <GlobalHarborDirectory
             selectedHarborId={selectedHarbor.id}
             onSelect={handleSelectHarbor}
@@ -278,7 +279,8 @@ export function App() {
             isLoading={isLoadingAssessment}
           />
         </div>
-        <div className="pointer-events-auto h-3/5 min-h-[20rem] overflow-y-auto pr-1 space-y-3">
+        <div className="pointer-events-auto flex-1 min-h-[18rem] overflow-y-auto pr-1 space-y-3">
+          <ProvenanceSourcePanel assessment={assessment} />
           <CatchReportForm lat={selectedHarbor.lat} lon={selectedHarbor.lon} />
           <OsintPanel intelligence={assessment?.osint_sector_intelligence} />
           <InterAgentStream events={assessment?.inter_agent_event_bus} />

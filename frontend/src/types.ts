@@ -209,6 +209,25 @@ export interface InterAgentEvent {
   payload: Record<string, unknown>;
 }
 
+export interface CanonicalRecord {
+  value: number | null;
+  unit: string;
+  source: string;
+  source_id: string;
+  dataset: string;
+  data_type: string;
+  state: 'OBSERVED' | 'NEAR_REAL_TIME' | 'NOWCAST' | 'FORECAST' | 'MODEL' | 'CACHED' | 'STALE' | 'UNAVAILABLE' | string;
+  observation_time: number | null;
+  valid_time: number | null;
+  retrieved_at: number;
+  spatial_resolution: string;
+  temporal_resolution: string;
+  distance_from_requested_km: number | null;
+  quality: string;
+  confidence: number;
+  notes: string;
+}
+
 export interface TripAssessmentResponse {
   coordinate: Coordinate;
   vessel_length_m: number;
@@ -229,6 +248,8 @@ export interface TripAssessmentResponse {
   explanation: ExplanationResult;
   provenance: ProvenanceRecord;
   inter_agent_event_bus?: InterAgentEvent[];
+  canonical_records?: Record<string, CanonicalRecord>;
+  canonical_data_unavailable?: string[];
   telemetry: {
     execution_ms: number;
     services_triggered: string[];

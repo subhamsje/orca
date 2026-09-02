@@ -1,143 +1,174 @@
 import React, { useMemo } from 'react';
 import {
+  AlertCircle,
   Cloud,
   Compass,
   Droplets,
   Eye,
   Gauge,
-  Sun,
   Thermometer,
   Waves,
   Wind,
 } from 'lucide-react';
 import { OceanState, RiskState, TripAssessmentResponse } from '../../types';
 import { formatKm, bearingToCompass } from '../../utils/format';
+import { ProvenanceBadge } from './ProvenanceBadge';
 
 interface OceanVitalsProps {
   assessment: TripAssessmentResponse | null;
 }
 
-const TONE_BAR: Record<'cyan' | 'emerald' | 'amber' | 'red', string> = {
+const TONE_BAR: Record<'cyan' | 'emerald' | 'amber' | 'red' | 'slate', string> = {
   cyan: 'bg-cyan-400',
   emerald: 'bg-emerald-400',
   amber: 'bg-amber-400',
   red: 'bg-red-400',
+  slate: 'bg-slate-500',
 };
 
-function intensityFromWave(h: number): number {
+function intensityFromWave(h: number | null | undefined): number {
+  if (h == null) return 0;
   return Math.max(0, Math.min(100, (h / 4) * 100));
 }
-function intensityFromSST(c: number): number {
+function intensityFromSST(c: number | null | undefined): number {
+  if (c == null) return 0;
   return Math.max(0, Math.min(100, (c / 35) * 100));
 }
-function intensityFromChl(mg: number): number {
+function intensityFromChl(mg: number | null | undefined): number {
+  if (mg == null) return 0;
   return Math.max(0, Math.min(100, (mg / 10) * 100));
 }
-function intensityFromWind(kmh: number): number {
+function intensityFromWind(kmh: number | null | undefined): number {
+  if (kmh == null) return 0;
   return Math.max(0, Math.min(100, (kmh / 60) * 100));
+}
+
+interface VitalDef {
+  key: 'sea_surface_temperature' | 'wave_height' | 'wind_speed' | 'swell_wave_height' | 'current_speed' | 'chlorophyll' | 'air_pressure' | 'visibility';
+  label: string;
+  unit: string;
+  value: number | null | undefined;
+  Icon: React.ComponentType<{ className?: string }>;
+  tone: 'cyan' | 'emerald' | 'amber' | 'red' | 'slate';
+  intensity: number;
+  hint: string;
 }
 
 export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
   const ocean: OceanState | undefined = assessment?.world_model?.ocean_state;
   const risk: RiskState | undefined = assessment?.world_model?.risk_state;
+  const canonical = assessment?.canonical_records;
 
-  const cards = useMemo(() => {
+  const cards: VitalDef[] = useMemo(() => {
     if (!ocean) return [];
     return [
       {
+        key: 'sea_surface_temperature',
         label: 'SST',
-        value: ocean.sst_c.toFixed(1),
         unit: '°C',
+        value: ocean.sst_c,
         Icon: Thermometer,
-        tone: 'amber' as const,
+        tone: 'amber',
         intensity: intensityFromSST(ocean.sst_c),
-        hint: 'Sea Surface Temp · INSAT-3DR',
+        hint: canonical?.sea_surface_temperature?.source ?? 'Sea Surface Temp',
       },
       {
+        key: 'wave_height',
         label: 'Wave',
-        value: ocean.wave_height_m.toFixed(2),
         unit: 'm',
+        value: ocean.wave_height_m,
         Icon: Waves,
         tone:
-          ocean.wave_height_m > 2.5
-            ? ('red' as const)
-            : ocean.wave_height_m > 1.2
-              ? ('amber' as const)
-              : ('cyan' as const),
+          ocean.wave_height_m != null && ocean.wave_height_m > 2.5
+            ? 'red'
+            : ocean.wave_height_m != null && ocean.wave_height_m > 1.2
+              ? 'amber'
+              : 'cyan',
         intensity: intensityFromWave(ocean.wave_height_m),
-        hint: `${ocean.wave_period_s.toFixed(1)}s period · WW3`,
+        hint: ocean.wave_period_s != null ? `${ocean.wave_period_s.toFixed(1)}s period · WW3` : 'Significant wave',
       },
       {
+        key: 'wind_speed',
         label: 'Wind',
-        value: ocean.wind_speed_kmh.toFixed(0),
         unit: 'km/h',
+        value: ocean.wind_speed_kmh,
         Icon: Wind,
         tone:
-          ocean.wind_speed_kmh > 35
-            ? ('red' as const)
-            : ocean.wind_speed_kmh > 20
-              ? ('amber' as const)
-              : ('cyan' as const),
+          ocean.wind_speed_kmh != null && ocean.wind_speed_kmh > 35
+            ? 'red'
+            : ocean.wind_speed_kmh != null && ocean.wind_speed_kmh > 20
+              ? 'amber'
+              : 'cyan',
         intensity: intensityFromWind(ocean.wind_speed_kmh),
-        hint: `${ocean.wind_direction_cardinal} ${ocean.wind_direction_deg.toFixed(0)}° · gusts ${ocean.wind_gust_kmh.toFixed(0)}`,
+        hint: ocean.wind_direction_cardinal
+          ? `${ocean.wind_direction_cardinal} ${ocean.wind_direction_deg?.toFixed(0)}° · gusts ${ocean.wind_gust_kmh?.toFixed(0) ?? '—'}`
+          : '10m wind',
       },
       {
+        key: 'swell_wave_height',
         label: 'Swell',
-        value: ocean.swell_wave_height_m.toFixed(2),
         unit: 'm',
+        value: ocean.swell_wave_height_m,
         Icon: Waves,
-        tone: 'cyan' as const,
+        tone: 'cyan',
         intensity: intensityFromWave(ocean.swell_wave_height_m),
-        hint: `${ocean.swell_wave_period_s.toFixed(1)}s · ${bearingToCompass(ocean.swell_wave_direction_deg)} ${ocean.swell_wave_direction_deg.toFixed(0)}°`,
+        hint:
+          ocean.swell_wave_period_s != null
+            ? `${ocean.swell_wave_period_s.toFixed(1)}s · ${bearingToCompass(ocean.swell_wave_direction_deg ?? null)} ${ocean.swell_wave_direction_deg?.toFixed(0) ?? ''}°`
+            : 'Swell',
       },
       {
+        key: 'current_speed',
         label: 'Current',
-        value: ocean.current_speed_ms.toFixed(2),
         unit: 'm/s',
+        value: ocean.current_speed_ms,
         Icon: Compass,
-        tone: 'cyan' as const,
-        intensity: Math.max(0, Math.min(100, (ocean.current_speed_ms / 1.5) * 100)),
-        hint: `${bearingToCompass(ocean.current_dir_deg)} · ROMS`,
+        tone: 'cyan',
+        intensity: ocean.current_speed_ms != null ? Math.max(0, Math.min(100, (ocean.current_speed_ms / 1.5) * 100)) : 0,
+        hint: ocean.current_dir_deg != null ? `${bearingToCompass(ocean.current_dir_deg)} · ROMS` : 'Surface current',
       },
       {
+        key: 'chlorophyll',
         label: 'Chl-a',
-        value: ocean.chlorophyll_mg_m3.toFixed(2),
         unit: 'mg/m³',
+        value: ocean.chlorophyll_mg_m3,
         Icon: Droplets,
-        tone: 'emerald' as const,
+        tone: 'emerald',
         intensity: intensityFromChl(ocean.chlorophyll_mg_m3),
-        hint: 'Productivity · OCM-3',
+        hint: 'Productivity',
       },
       {
+        key: 'air_pressure',
         label: 'Pressure',
-        value: ocean.air_pressure_hpa.toFixed(0),
         unit: 'hPa',
+        value: ocean.air_pressure_hpa,
         Icon: Gauge,
         tone:
-          ocean.air_pressure_hpa < 1000
-            ? ('amber' as const)
-            : ocean.air_pressure_hpa > 1020
-              ? ('emerald' as const)
-              : ('cyan' as const),
-        intensity: Math.max(0, Math.min(100, ((ocean.air_pressure_hpa - 990) / 40) * 100)),
-        hint: `Air ${ocean.air_temperature_c.toFixed(0)}°C`,
+          ocean.air_pressure_hpa != null && ocean.air_pressure_hpa < 1000
+            ? 'amber'
+            : ocean.air_pressure_hpa != null && ocean.air_pressure_hpa > 1020
+              ? 'emerald'
+              : 'cyan',
+        intensity: ocean.air_pressure_hpa != null ? Math.max(0, Math.min(100, ((ocean.air_pressure_hpa - 990) / 40) * 100)) : 0,
+        hint: ocean.air_temperature_c != null ? `Air ${ocean.air_temperature_c.toFixed(0)}°C` : 'Surface pressure',
       },
       {
+        key: 'visibility',
         label: 'Visibility',
-        value: ocean.visibility_km.toFixed(0),
         unit: 'km',
+        value: ocean.visibility_km,
         Icon: Eye,
         tone:
-          ocean.visibility_km < 4
-            ? ('red' as const)
-            : ocean.visibility_km < 8
-              ? ('amber' as const)
-              : ('emerald' as const),
-        intensity: Math.max(0, Math.min(100, (ocean.visibility_km / 15) * 100)),
-        hint: `Cloud ${ocean.cloud_cover_pct.toFixed(0)}%`,
+          ocean.visibility_km != null && ocean.visibility_km < 4
+            ? 'red'
+            : ocean.visibility_km != null && ocean.visibility_km < 8
+              ? 'amber'
+              : 'emerald',
+        intensity: ocean.visibility_km != null ? Math.max(0, Math.min(100, (ocean.visibility_km / 15) * 100)) : 0,
+        hint: ocean.cloud_cover_pct != null ? `Cloud ${ocean.cloud_cover_pct.toFixed(0)}%` : 'Visibility',
       },
     ];
-  }, [ocean]);
+  }, [ocean, canonical]);
 
   if (!ocean || !risk) {
     return (
@@ -145,7 +176,10 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-muted">
           Live Ocean Vitals
         </h3>
-        <p className="mt-3 text-xs text-ink-muted">Awaiting world-model telemetry.</p>
+        <p className="mt-3 text-xs text-ink-muted flex items-center gap-1.5">
+          <AlertCircle className="w-3.5 h-3.5" />
+          Awaiting world-model telemetry.
+        </p>
       </section>
     );
   }
@@ -157,58 +191,84 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">
           Live Ocean Vitals
         </h3>
-        <span className="chip text-[9px]">{ocean.salinity_psu.toFixed(1)} PSU</span>
+        {ocean.salinity_psu != null && (
+          <span className="chip text-[9px]">{ocean.salinity_psu.toFixed(1)} PSU</span>
+        )}
       </header>
 
       <div className="relative grid grid-cols-2 gap-2">
-        {cards.map((v) => (
-          <div
-            key={v.label}
-            className="rounded-lg border border-cyan-500/15 bg-ocean-1000/60 p-2.5 space-y-1.5"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] uppercase tracking-wider text-ink-muted font-bold">
-                {v.label}
-              </span>
-              <v.Icon className="w-3 h-3 text-cyan-300/80" />
-            </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-lg font-black text-white numeric leading-none">
-                {v.value}
-              </span>
-              {v.unit && (
-                <span className="text-[9px] text-ink-muted font-bold">{v.unit}</span>
+        {cards.map((v) => {
+          const isMissing = v.value == null;
+          const rec = canonical?.[v.key];
+          return (
+            <div
+              key={v.label}
+              className="rounded-lg border border-cyan-500/15 bg-ocean-1000/60 p-2.5 space-y-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] uppercase tracking-wider text-ink-muted font-bold">
+                  {v.label}
+                </span>
+                <v.Icon
+                  className={`w-3 h-3 ${isMissing ? 'text-ink-subtle' : 'text-cyan-300/80'}`}
+                />
+              </div>
+              {isMissing ? (
+                <div className="space-y-0.5">
+                  <p className="text-base font-black text-ink-subtle leading-none">—</p>
+                  <p className="text-[8.5px] uppercase tracking-wider text-amber-300/80 font-bold">
+                    Data unavailable
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-lg font-black text-white numeric leading-none">
+                      {typeof v.value === 'number' ? v.value.toFixed(v.label === 'Wind' || v.label === 'Pressure' || v.label === 'Visibility' ? 0 : 2) : '—'}
+                    </span>
+                    {v.unit && (
+                      <span className="text-[9px] text-ink-muted font-bold">{v.unit}</span>
+                    )}
+                  </div>
+                  <div className="h-1 rounded-full bg-ocean-800 overflow-hidden">
+                    <div
+                      className={`${TONE_BAR[v.tone]} h-full transition-all duration-700`}
+                      style={{ width: `${v.intensity}%` }}
+                    />
+                  </div>
+                </>
               )}
+              <p className="text-[8.5px] text-ink-muted leading-tight truncate">
+                {isMissing ? 'No source returned a usable value' : v.hint}
+              </p>
+              {!isMissing && <ProvenanceBadge record={rec} compact />}
             </div>
-            <div className="h-1 rounded-full bg-ocean-800 overflow-hidden">
-              <div
-                className={`${TONE_BAR[v.tone]} h-full transition-all duration-700`}
-                style={{ width: `${v.intensity}%` }}
-              />
-            </div>
-            {v.hint && (
-              <p className="text-[8.5px] text-ink-muted leading-tight truncate">{v.hint}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="relative mt-3 grid grid-cols-4 gap-1.5 text-[10px]">
         <RiskChip
           label="IMBL"
-          value={formatKm(risk.dist_to_imbl_km)}
+          value={
+            risk.dist_to_imbl_km != null ? formatKm(risk.dist_to_imbl_km) : '—'
+          }
           tone={
-            risk.dist_to_imbl_km < 20
+            risk.dist_to_imbl_km != null && risk.dist_to_imbl_km < 20
               ? 'red'
-              : risk.dist_to_imbl_km < 50
+              : risk.dist_to_imbl_km != null && risk.dist_to_imbl_km < 50
                 ? 'amber'
                 : 'cyan'
           }
         />
         <RiskChip
           label="Naval"
-          value={formatKm(risk.dist_to_naval_zone_km)}
-          tone={risk.dist_to_naval_zone_km < 30 ? 'red' : 'cyan'}
+          value={
+            risk.dist_to_naval_zone_km != null
+              ? formatKm(risk.dist_to_naval_zone_km)
+              : '—'
+          }
+          tone={risk.dist_to_naval_zone_km != null && risk.dist_to_naval_zone_km < 30 ? 'red' : 'cyan'}
         />
         <RiskChip
           label="Capsize"
@@ -217,11 +277,15 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
         />
         <RiskChip
           label="CPA"
-          value={`${risk.collision_cpa_nm.toFixed(2)} NM`}
+          value={
+            risk.collision_cpa_nm != null
+              ? `${risk.collision_cpa_nm.toFixed(2)} NM`
+              : '—'
+          }
           tone={
-            risk.collision_cpa_nm < 0.5
+            risk.collision_cpa_nm != null && risk.collision_cpa_nm < 0.5
               ? 'red'
-              : risk.collision_cpa_nm < 1.5
+              : risk.collision_cpa_nm != null && risk.collision_cpa_nm < 1.5
                 ? 'amber'
                 : 'cyan'
           }
