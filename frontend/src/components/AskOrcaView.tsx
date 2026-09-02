@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
-import { Mic, MicOff, Send, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Mic, MicOff, Send, Volume2, Sparkles, Compass, ShieldAlert, Fish, Bot, User, RefreshCw } from 'lucide-react';
 import { useSpeech } from '../hooks/useSpeech';
-import {
-  isSpeechRecognitionSupported,
-  startVoiceRecognition,
-} from '../utils/speech';
-import { AudioButton, Button, Card, CardHeader, EmptyState, StatusBadge } from '../ui';
+import { fetchTripAssessment } from '../utils/api';
+import { TripAssessmentResponse } from '../types';
+
+interface Message {
+  id: string;
+  sender: 'user' | 'orca';
+  text: string;
+  timestamp: string;
+  assessment?: TripAssessmentResponse;
+}
 
 interface AskOrcaViewProps {
   language: string;
@@ -13,199 +18,272 @@ interface AskOrcaViewProps {
   latestExplanation?: string;
 }
 
-const SAMPLE_QUERIES: Record<string, string> = {
-  Marathi: 'गोव्याजवळ हवामान आणि मासेमारी कशी आहे?',
-  Hindi: 'मुंबई के पास मछली पकड़ने के लिए आज मौसम कैसा है?',
-  Gujarati: 'વેરાવળ પાસે આજે માછીમારી માટે હવામાન કેવું છે?',
-  Tamil: 'சென்னை கடலில் இன்று மீன் பிடிக்க பாதுக்க safe?',
-  Telugu: 'విశాఖపట్నం వద్దే ఈరోజు చేపలు పట్టడానికి వాతావరణం ఎలా ఉంది?',
-  Malayalam: 'കൊച്ചിക്ക് സമീപം ഇന്ന് മത്സ്യബന്ധനത്തിന് കാലാവസ്ഥ എങ്ങനെ?',
-  Kannada: 'ಮಂಗಳೂರಿನ ಬಳಿ ಇಂದು ಮೀನುಗಾರಿಕೆಗೆ ಹವಾಮಾನ ಹೇಗಿದೆ?',
-  Bengali: 'পারাদ্বীপের কাছে আজ মাছ ধরার আবহাওয়া কেমন?',
-  English: 'Is it safe to fish near Goa today?',
-};
-
 export const AskOrcaView: React.FC<AskOrcaViewProps> = ({
   language,
   onQuerySubmit,
   latestExplanation,
 }) => {
-  const [transcript, setTranscript] = useState('');
-  const [isListening, setIsListening] = useState(false);
-  const [recognitionError, setRecognitionError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 'welcome_msg',
+      sender: 'orca',
+      text: latestExplanation || 'नमस्कार! मी ओर्का सागरी एआय सहाय्यक आहे. समुद्रातील हवामान, मासेमारी क्षेत्र किंवा सुरक्षा याविषयी मला प्रश्न विचारा.',
+      timestamp: 'Just now',
+    },
+  ]);
+  const [inputText, setInputText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const speech = useSpeech(language);
 
-  const handleMic = () => {
-    if (isListening) {
-      setIsListening(false);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Handle Speech Recognition Input
+  const handleToggleRecording = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser. Please type your query.');
       return;
     }
 
-    setRecognitionError(null);
-    setIsListening(true);
+    if (isRecording) {
+      setIsRecording(false);
+      return;
+    }
 
-    const result = startVoiceRecognition(language, {
-      onResult: (text) => {
-        setTranscript(text);
-        setIsListening(false);
-        onQuerySubmit(text);
-      },
-      onError: (err) => {
-        setIsListening(false);
-        setRecognitionError(
-          err === 'unsupported'
-            ? 'Voice input is not supported in this browser.'
-            : 'Could not capture audio. Try typing instead.',
-        );
-      },
-      onEnd: () => setIsListening(false),
-    });
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = language.includes('Marathi') ? 'mr-IN' : language.includes('Hindi') ? 'hi-IN' : 'en-IN';
 
-    if (!result && !isSpeechRecognitionSupported()) {
-      setIsListening(false);
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = () => setIsRecording(false);
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInputText(transcript);
+      handleSendMessage(transcript);
+    };
+
+    recognition.start();
+  };
+
+  const handleSendMessage = async (textToSend?: string) => {
+    const text = textToSend || inputText;
+    if (!text.trim() || isLoading) return;
+
+    const userMsg: Message = {
+      id: `user_${Date.now()}`,
+      sender: 'user',
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setInputText('');
+    setIsLoading(true);
+
+    try {
+      onQuerySubmit(text);
+      // Fetch dynamic decision from backend API
+      const assessmentData = await fetchTripAssessment(16.0500, 73.4667, 8.5, language, text);
+
+      const orcaMsg: Message = {
+        id: `orca_${Date.now()}`,
+        sender: 'orca',
+        text: assessmentData.explanation.plain_language_text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        assessment: assessmentData,
+      };
+
+      setMessages((prev) => [...prev, orcaMsg]);
+      speech.play(assessmentData.explanation.plain_language_text);
+    } catch (err) {
+      const errorMsg: Message = {
+        id: `orca_${Date.now()}`,
+        sender: 'orca',
+        text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSubmit = () => {
-    const trimmed = transcript.trim();
-    if (!trimmed) return;
-    onQuerySubmit(trimmed);
-  };
-
-  const sample = SAMPLE_QUERIES[language] ?? SAMPLE_QUERIES.English;
+  const quickPrompts = [
+    'उद्या सकाळी मासेमारीसाठी जाणे सुरक्षित आहे का?',
+    'मालवण किनाऱ्याजवळ बांगडा मासे कुठे मिळतील?',
+    'रत्नागिरी जवळील IMBL सीमेपासून अंतर किती आहे?',
+    '३० किमी प्रवासासाठी डिझेल किती लागेल?',
+  ];
 
   return (
-    <div className="space-y-4 max-w-2xl mx-auto">
-      <Card padding="lg">
-        <div className="text-center space-y-3">
-          <div className="bg-cyan-950 border border-cyan-800 p-3 rounded-full inline-flex text-cyan-300">
-            <Sparkles className="w-6 h-6" aria-hidden="true" />
+    <div className="flex flex-col h-[650px] md:h-[700px] bg-ocean-950 border border-ocean-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl relative">
+      {/* Header */}
+      <div className="p-4 border-b border-ocean-800 bg-ocean-900/90 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 bg-cyan-950 border border-cyan-800 rounded-xl text-cyan-400 shadow-inner">
+            <Bot className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white">Ask ORCA</h2>
-            <p className="text-xs text-ink-muted mt-1">
-              Multilingual voice-first AI · 9 Indian coastal dialects
-            </p>
-          </div>
-          <div className="flex justify-center gap-2 flex-wrap">
-            <StatusBadge tone="info">{language}</StatusBadge>
-            <StatusBadge tone={isListening ? 'caution' : 'neutral'}>
-              {isListening ? 'Listening' : 'Ready'}
-            </StatusBadge>
+            <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+              <span>Ask ORCA AI Voice Assistant</span>
+              <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full font-bold">
+                ONLINE (ISRO Multi-Agent)
+              </span>
+            </h2>
+            <p className="text-[11px] text-slate-400">Voice-First Maritime Natural Language Reasoning ({language})</p>
           </div>
         </div>
+      </div>
 
-        <div className="mt-6 flex justify-center">
-          <button
-            type="button"
-            onClick={handleMic}
-            aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
-            aria-pressed={isListening}
-            className={[
-              'p-7 rounded-full border-4 transition focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-400/60',
-              'active:scale-95',
-              isListening
-                ? 'bg-red-600 border-red-400 text-white'
-                : 'bg-cyan-600 border-cyan-400 text-white hover:bg-cyan-500',
-            ].join(' ')}
+      {/* Messages Thread Container */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex items-start space-x-3 ${msg.sender === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}
           >
-            {isListening ? (
-              <MicOff className="w-10 h-10" aria-hidden="true" />
-            ) : (
-              <Mic className="w-10 h-10" aria-hidden="true" />
-            )}
-          </button>
-        </div>
+            <div
+              className={`p-2 rounded-xl border shrink-0 ${
+                msg.sender === 'user'
+                  ? 'bg-cyan-950 border-cyan-800 text-cyan-300'
+                  : 'bg-ocean-900 border-ocean-800 text-slate-300'
+              }`}
+            >
+              {msg.sender === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4 text-cyan-400" />}
+            </div>
 
-        <p className="mt-3 text-xs text-center text-ink-muted">
-          {isListening
-            ? '🎙️ Listening — speak your question clearly'
-            : 'Tap to speak, or type below'}
-        </p>
+            <div
+              className={`max-w-xl p-4 rounded-2xl border text-xs leading-relaxed space-y-2 shadow-lg ${
+                msg.sender === 'user'
+                  ? 'bg-cyan-950/80 border-cyan-800 text-cyan-100 rounded-tr-none'
+                  : 'bg-ocean-900/90 border-ocean-800 text-slate-200 rounded-tl-none'
+              }`}
+            >
+              <p className="font-sans font-medium text-sm">{msg.text}</p>
 
-        {recognitionError && (
-          <p className="mt-2 text-xs text-center text-amber-300">{recognitionError}</p>
+              {/* Assessment Quick Badge Card if attached */}
+              {msg.assessment && (
+                <div className="bg-ocean-950 p-3 rounded-xl border border-ocean-800 mt-2 space-y-1.5 font-mono">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-cyan-400">Verdict: {msg.assessment.verdict}</span>
+                    <span className="text-amber-400 font-bold">Risk: {msg.assessment.risk_score}/100</span>
+                  </div>
+                  {msg.assessment.pfz_grounds[0] && (
+                    <span className="text-emerald-400 block text-[10px]">
+                      📍 Top Ground: {msg.assessment.pfz_grounds[0].name} ({msg.assessment.pfz_grounds[0].hsi} HSI)
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-ocean-800/40">
+                <span>{msg.timestamp}</span>
+                {msg.sender === 'orca' && (
+                  <button
+                    onClick={() => speech.play(msg.text)}
+                    className="flex items-center space-x-1 text-cyan-400 hover:text-cyan-300 transition"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                    <span>Listen</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {isLoading && (
+          <div className="flex items-center space-x-2 text-xs text-slate-400 bg-ocean-900/60 p-3 rounded-xl border border-ocean-800 max-w-xs">
+            <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />
+            <span>ORCA Reasoning Engine is analyzing ocean parameters…</span>
+          </div>
         )}
 
-        <div className="mt-5 flex items-stretch gap-2">
-          <label htmlFor="orca-query" className="sr-only">
-            Ask ORCA
-          </label>
-          <input
-            id="orca-query"
-            type="text"
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            placeholder={`Try "${sample}"`}
-            className="flex-1 bg-ocean-950 border border-ocean-800 text-slate-100 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-cyan-500 focus-visible:ring-2 focus-visible:ring-cyan-400"
-          />
-          <Button
-            type="button"
-            size="md"
-            leadingIcon={<Send className="w-4 h-4" />}
-            onClick={handleSubmit}
-            disabled={!transcript.trim()}
-          >
-            Ask
-          </Button>
-        </div>
+        <div ref={messagesEndRef} />
+      </div>
 
-        <div className="mt-4">
-          <p className="text-[11px] uppercase tracking-wider text-ink-muted font-bold mb-2">
-            Try a sample question
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(SAMPLE_QUERIES)
-              .slice(0, 5)
-              .map(([lang, query]) => (
-                <button
-                  key={lang}
-                  type="button"
-                  onClick={() => setTranscript(query)}
-                  className="text-[11px] font-medium text-slate-200 bg-ocean-800 hover:bg-ocean-700 border border-ocean-700 rounded-full px-3 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-                >
-                  {lang}
-                </button>
-              ))}
+      {/* Quick Prompt Chips */}
+      <div className="px-4 py-2 bg-ocean-900/40 border-t border-ocean-900 flex items-center space-x-2 overflow-x-auto text-xs">
+        <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+        {quickPrompts.map((prompt, idx) => (
+          <button
+            key={idx}
+            onClick={() => {
+              setInputText(prompt);
+              handleSendMessage(prompt);
+            }}
+            className="bg-ocean-900 hover:bg-cyan-950 text-slate-300 hover:text-cyan-300 px-3 py-1.5 rounded-xl border border-ocean-800 shrink-0 transition"
+          >
+            {prompt}
+          </button>
+        ))}
+      </div>
+
+      {/* Voice Recording Waveform Bar */}
+      {isRecording && (
+        <div className="px-4 py-2 bg-cyan-950 border-t border-cyan-800 flex items-center justify-between text-xs text-cyan-300">
+          <div className="flex items-center space-x-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+            <span className="font-bold">Listening... Speak now in {language}</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-1 h-4 bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="w-1 h-6 bg-cyan-300 animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="w-1 h-3 bg-cyan-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="w-1 h-5 bg-cyan-400 animate-bounce" style={{ animationDelay: '450ms' }} />
           </div>
         </div>
-      </Card>
-
-      {latestExplanation ? (
-        <Card padding="md">
-          <CardHeader
-            title={`Latest response (${language})`}
-            icon={<Sparkles className="w-4 h-4 text-cyan-400" />}
-            badge={
-              <AudioButton
-                isPlaying={speech.isPlaying}
-                onPlay={() => speech.play(latestExplanation)}
-                onStop={speech.stop}
-                label="Listen"
-                variant="cyan"
-                size="sm"
-              />
-            }
-          />
-          <p className="mt-3 text-sm text-slate-100 leading-relaxed bg-ocean-950/60 p-4 rounded-xl border border-ocean-800">
-            “{latestExplanation}”
-          </p>
-        </Card>
-      ) : (
-        <Card padding="md">
-          <EmptyState
-            icon={<Sparkles className="w-5 h-5" />}
-            title="No response yet"
-            description="Ask a question above to receive a plain-language explanation in your selected dialect."
-          />
-        </Card>
       )}
+
+      {/* Input Bar */}
+      <div className="p-3 border-t border-ocean-800 bg-ocean-900/90 flex items-center space-x-2">
+        <button
+          onClick={handleToggleRecording}
+          title={isRecording ? 'Stop Recording' : 'Voice Input'}
+          className={`p-3 rounded-xl border shadow-lg transition ${
+            isRecording
+              ? 'bg-red-600 border-red-400 text-white animate-pulse'
+              : 'bg-cyan-950 hover:bg-cyan-900 border-cyan-800 text-cyan-400'
+          }`}
+        >
+          {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+        </button>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendMessage();
+          }}
+          className="flex-1 flex items-center space-x-2"
+        >
+          <input
+            type="text"
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder={`Type your query in ${language} or English...`}
+            className="flex-1 bg-ocean-950 border border-ocean-800 text-slate-100 text-xs rounded-xl px-4 py-3 outline-none focus:border-cyan-500 transition"
+          />
+          <button
+            type="submit"
+            disabled={!inputText.trim() || isLoading}
+            className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white p-3 rounded-xl font-bold transition shadow-lg flex items-center justify-center"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
     </div>
   );
 };
