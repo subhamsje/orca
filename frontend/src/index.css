@@ -4,13 +4,60 @@
 
 @layer base {
   body {
-    @apply bg-ocean-950 text-slate-100 antialiased overflow-x-hidden;
+    @apply bg-ocean-950 text-slate-100 antialiased;
   }
+
+  /* Keep user-select on (allow text copy) but disallow text selection on UI chrome */
+  button,
+  [role='button'],
+  nav,
+  header {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Custom focus ring fallbacks for browsers that strip tailwind's focus-visible */
+  :focus-visible {
+    outline: none;
+  }
+}
+
+@layer utilities {
+  /* Lightweight keyframes used by modals — relies on Tailwind's `animate-in` etc. */
+  .animate-in {
+    animation-duration: 200ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-fill-mode: both;
+  }
+  .fade-in {
+    animation-name: fadeIn;
+  }
+  .slide-in-from-bottom-4 {
+    animation-name: slideInFromBottom;
+  }
+  .zoom-in-95 {
+    animation-name: zoomIn95;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInFromBottom {
+  from { transform: translateY(1rem); }
+  to { transform: translateY(0); }
+}
+
+@keyframes zoomIn95 {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .leaflet-container {
   width: 100%;
   height: 100%;
   border-radius: 0.75rem;
-  background: #032b45 !important;
+  background: #021827 !important;
+  font-family: inherit;
 }
