@@ -181,7 +181,7 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
         </div>
         <div className="min-w-0 flex-1">
           <h1
-            className={`text-xl sm:text-2xl font-black tracking-tight leading-tight numeric ${
+            className={`text-lg sm:text-xl md:text-2xl font-black tracking-tight leading-[1.1] break-words ${
               tone === 'safe'
                 ? 'text-emerald-200'
                 : tone === 'caution'
