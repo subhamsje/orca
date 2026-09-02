@@ -1,5 +1,5 @@
 """
-Async Multi-Agent Orchestrator DAG Engine
+Async Multi-Agent Orchestrator DAG & Event Bus Engine
 Coordinates parallel execution of specialist agents:
 - OceanService (SST, Chlorophyll, Currents)
 - WeatherService (Winds, Gusts)
@@ -12,6 +12,7 @@ Coordinates parallel execution of specialist agents:
 - CollisionAvoidanceAgent (CPA/TCPA Guard)
 - OSINTAgent (NASA VIIRS, AGMARKNET, Security Alerts)
 - NLGService (Plain-Language Voice Translation)
+- AgentEventBus (Inter-agent event log & provenance)
 """
 
 import asyncio
@@ -30,6 +31,7 @@ from services.nlg_service import nlg_service
 from services.economic_service import economic_service
 from services.collision_service import collision_service
 from services.osint_service import osint_service
+from services.event_bus import agent_event_bus, AgentMessage
 from database.repository import db_repository
 
 class MultiAgentOrchestrator:
@@ -51,14 +53,34 @@ class MultiAgentOrchestrator:
             alerts_service.check_active_alerts(lat, lon)
         )
 
+        await agent_event_bus.publish(AgentMessage(
+            sender="EnvironmentalServices",
+            event_type="ENVIRONMENTAL_DATA_INGESTED",
+            payload={"ocean": ocean_res, "weather": weather_res, "wave": wave_res, "alerts": alerts_res}
+        ))
+
         # Step 2: Safety Circuit Breaker & Hydrodynamics Evaluation
         vessel_profile = {"length_m": vessel_length_m, "beam_m": 2.2}
         safety_res = safety_service.evaluate_safety_and_circuit_breaker(
             weather_res, wave_res, alerts_res, vessel_length_m, vessel_profile
         )
 
+        await agent_event_bus.publish(AgentMessage(
+            sender="SafetyAgent",
+            event_type="SAFETY_EVALUATED",
+            payload=safety_res,
+            confidence=0.99
+        ))
+
         # Step 3: Multi-Species Habitat Suitability Index (HSI) Matrix
         pfz_res = await pfz_service.compute_habitat_suitability(ocean_res, lat, lon)
+
+        await agent_event_bus.publish(AgentMessage(
+            sender="PFZAgent",
+            event_type="HSI_MATRIX_COMPUTED",
+            payload=pfz_res,
+            confidence=0.92
+        ))
 
         # Step 4: Spatial Pathfinder Router (A* Detours)
         target_coords = pfz_res["top_grounds"][0]["coordinates"]
@@ -115,9 +137,10 @@ class MultiAgentOrchestrator:
             "geofence_status": geofence_service.inspect_coordinates(lat, lon),
             "explanation": nlg_res,
             "provenance": nlg_res.get("provenance_summary", {}),
+            "inter_agent_event_bus": agent_event_bus.get_event_history(limit=10),
             "telemetry": {
                 "execution_ms": round(dt_ms, 2),
-                "services_triggered": ["ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "pathfinding", "economics", "collision", "osint", "db_persistence", "nlg"]
+                "services_triggered": ["ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "pathfinding", "economics", "collision", "osint", "event_bus", "db_persistence", "nlg"]
             }
         }
 
