@@ -22,3 +22,4 @@ from services.satellite_pass_service import satellite_pass_service, SatellitePas
 from services.event_bus import agent_event_bus, AgentEventBus, AgentMessage
 from services.world_model_service import world_model_service, MaritimeWorldModelService
 from services.optimization_engine_service import optimization_engine, MultiObjectiveOptimizationEngine
+from services.incois_erddap_service import incois_erddap_service, IncoisErddapService

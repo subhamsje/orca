@@ -1,7 +1,7 @@
 """
 ORCA 4.0 Primary FastAPI Web Application Server
 Exposes high-performance REST and WebSockets endpoints for marine intelligence,
-NMEA hardware sensor ingestion, SAR Monte Carlo drift, CPA collision guard, OSINT intelligence, and governance ledgers.
+INCOIS ERDDAP satellite feeds, NMEA hardware sensor ingestion, SAR Monte Carlo drift, CPA collision guard, OSINT intelligence, and governance ledgers.
 """
 
 import os
@@ -25,6 +25,7 @@ from services.osint_service import osint_service
 from services.satellite_pass_service import satellite_pass_service
 from services.world_model_service import world_model_service
 from services.optimization_engine_service import optimization_engine
+from services.incois_erddap_service import incois_erddap_service
 from utils.nmea_parser import parse_nmea_sentence
 from utils.engine_twin import calculate_detailed_engine_metrics
 from utils.packet_encoder import pack_telemetry, unpack_telemetry
@@ -150,6 +151,10 @@ async def root():
 @app.get("/api/v1/health")
 async def health_check():
     return {"status": "healthy", "system": "ORCA 4.0 Universal Marine System"}
+
+@app.get("/api/v1/incois/erddap")
+async def query_incois_erddap(lat: float = 16.0215, lon: float = 73.4821, dataset_id: str = "incois_oceansat2_chl"):
+    return await incois_erddap_service.fetch_incois_ocean_data(lat=lat, lon=lon, dataset_id=dataset_id)
 
 @app.get("/api/v1/world-model")
 async def get_world_model(lat: float = 16.0215, lon: float = 73.4821, vessel_length_m: float = 8.5):
