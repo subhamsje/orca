@@ -78,6 +78,34 @@ const ViewportController: React.FC<ViewportControllerProps> = ({
     map.flyTo(center, zoom, { duration: 0.6 });
   }, [flyToNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the map in sync with its container size. The parent uses flex
+  // layout; without an observer, the map can render at 0×0 after the
+  // panel animates open and tiles never load.
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    observer.observe(container);
+    // Also fire once on mount to give the map a chance to settle.
+    requestAnimationFrame(() => map.invalidateSize());
+    return () => observer.disconnect();
+  }, [map]);
+
+  // Surface tile load failures so the workspace can show a status
+  // indicator instead of silently rendering an empty canvas.
+  useEffect(() => {
+    const onTileError = (event: { tile?: HTMLElement; url?: string }) => {
+      window.dispatchEvent(
+        new CustomEvent('orca:map:tile-error', { detail: event }),
+      );
+    };
+    map.on('tileerror', onTileError);
+    return () => {
+      map.off('tileerror', onTileError);
+    };
+  }, [map]);
+
   // User pan/zoom: report up so the top bar can render the live
   // coordinates. Do NOT trigger another flyTo — that would loop.
   useEffect(() => {
