@@ -35,7 +35,7 @@ class WeatherService:
             params = {
                 "latitude": lat,
                 "longitude": lon,
-                "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,air_temperature,cloud_cover,visibility",
+                "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,temperature_2m,cloud_cover,visibility",
                 "hourly": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
                 "timezone": "auto",
             }
@@ -49,7 +49,7 @@ class WeatherService:
                 w_dir = cur.get("wind_direction_10m") or (hourly.get("wind_direction_10m", [230])[0]) or 230
                 w_gust = cur.get("wind_gusts_10m") or (hourly.get("wind_gusts_10m", [22.0])[0]) or 22.0
                 pressure = cur.get("surface_pressure", 1012.0) or 1012.0
-                air_temp = cur.get("air_temperature", 28.0) or 28.0
+                air_temp = cur.get("temperature_2m", 28.0) or 28.0
                 cloud = cur.get("cloud_cover", 45) or 45
                 visibility_raw = cur.get("visibility", 10000) or 10000
                 visibility = visibility_raw / 1000.0

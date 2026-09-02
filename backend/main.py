@@ -6,8 +6,11 @@ INCOIS ERDDAP satellite feeds, NMEA hardware sensor ingestion, SAR Monte Carlo d
 
 import os
 import base64
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+import io
+import wave
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 
@@ -285,6 +288,242 @@ async def log_governance_override(req: GovernanceOverrideRequest):
 @app.get("/api/v1/history/trips")
 async def get_trip_history():
     return db_repository.get_recent_trip_logs(limit=20)
+
+
+# --------------------------------------------------------------------------- #
+# Voice pipeline — multilingual STT + TTS                                    #
+# --------------------------------------------------------------------------- #
+
+class VoiceSynthesizeRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+    language: str = Field("en", example="en")
+
+
+_VOICE_LANG_MAP = {
+    "English": "en", "en": "en", "en-IN": "en",
+    "Marathi": "mr", "mr": "mr", "mr-IN": "mr",
+    "Hindi": "hi", "hi": "hi", "hi-IN": "hi",
+    "Gujarati": "gu", "gu": "gu", "gu-IN": "gu",
+    "Tamil": "ta", "ta": "ta", "ta-IN": "ta",
+    "Telugu": "te", "te": "te", "te-IN": "te",
+    "Malayalam": "ml", "ml": "ml", "ml-IN": "ml",
+    "Kannada": "kn", "kn": "kn", "kn-IN": "kn",
+    "Bengali": "bn", "bn": "bn", "bn-IN": "bn",
+}
+
+
+@app.post("/api/v1/voice/transcribe")
+async def voice_transcribe(audio: UploadFile = File(...), language: str = "en"):
+    """
+    Multilingual speech-to-text endpoint.
+
+    Accepts an audio file (webm, ogg, wav, mp3) recorded in the browser via
+    MediaRecorder. We delegate to OpenAI Whisper via the `faster-whisper`
+    Python package if it is installed; otherwise we return a 501 with a clear
+    message telling the frontend to fall back to Web Speech API.
+
+    The endpoint is intentionally permissive — the frontend's text-input
+    fallback is always available, so a 501 is not fatal.
+    """
+    try:
+        content = await audio.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read audio: {e}")
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty audio payload")
+
+    lang_code = _VOICE_LANG_MAP.get(language, "en")
+
+    # Try faster-whisper first (works offline, no API key)
+    try:
+        from faster_whisper import WhisperModel  # type: ignore
+
+        model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        # Write to a temp file (faster-whisper expects a path)
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        segments, info = model.transcribe(tmp_path, language=lang_code, vad_filter=True)
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        return {
+            "text": text,
+            "language": info.language,
+            "language_probability": float(info.language_probability),
+            "duration_sec": float(info.duration),
+            "engine": "faster-whisper-tiny",
+        }
+    except ImportError:
+        pass
+    except Exception as e:
+        # Don't fail the request if the local model errors; client will
+        # already be using Web Speech API in parallel.
+        print(f"[voice/transcribe] faster-whisper error: {e}")
+
+    # Try openai-whisper (older API)
+    try:
+        import whisper  # type: ignore
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        model = whisper.load_model("tiny")
+        result = model.transcribe(tmp_path, language=lang_code, fp16=False)
+        return {
+            "text": result.get("text", "").strip(),
+            "language": result.get("language", lang_code),
+            "engine": "openai-whisper-tiny",
+        }
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[voice/transcribe] openai-whisper error: {e}")
+
+    raise HTTPException(
+        status_code=501,
+        detail="Server-side STT unavailable. The browser will use Web Speech API instead.",
+    )
+
+
+def _synthesize_silence_wav(duration_sec: float = 0.4, sample_rate: int = 16000) -> bytes:
+    """
+    Fallback: emit a short silence PCM WAV so the endpoint always returns audio
+    bytes. The browser will then play the silence (a no-op cue) while the
+    frontend also uses SpeechSynthesis for the actual voice.
+    """
+    n_samples = int(duration_sec * sample_rate)
+    with io.BytesIO() as buf:
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(b"\x00\x00" * n_samples)
+        return buf.getvalue()
+
+
+@app.post("/api/v1/voice/synthesize")
+async def voice_synthesize(req: VoiceSynthesizeRequest):
+    """
+    Server-side text-to-speech endpoint.
+
+    Returns a WAV audio stream. The browser can play it directly. We
+    prefer gTTS / pyttsx3 / espeak when available; otherwise we return a
+    silence placeholder so the API contract is always honoured and the
+    frontend's SpeechSynthesis API is used as the primary voice.
+    """
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty text")
+
+    lang_code = _VOICE_LANG_MAP.get(req.language, "en")
+
+    # Try gTTS (online but high quality, Indian languages supported)
+    try:
+        from gtts import gTTS  # type: ignore
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tts = gTTS(text=text, lang=lang_code, slow=False)
+            tts.save(tmp.name)
+            data = open(tmp.name, "rb").read()
+        return Response(
+            content=data,
+            media_type="audio/mpeg",
+            headers={"X-TTS-Engine": "gTTS", "X-TTS-Lang": lang_code},
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[voice/synthesize] gTTS error: {e}")
+
+    # Try pyttsx3 (offline, espeak-backed on Linux)
+    try:
+        import pyttsx3  # type: ignore
+        import tempfile
+
+        engine = pyttsx3.init()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            engine.save_to_file(text, tmp.name)
+            engine.runAndWait()
+            data = open(tmp.name, "rb").read()
+        return Response(
+            content=data,
+            media_type="audio/wav",
+            headers={"X-TTS-Engine": "pyttsx3", "X-TTS-Lang": lang_code},
+        )
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[voice/synthesize] pyttsx3 error: {e}")
+
+    # Last resort: silence placeholder
+    return Response(
+        content=_synthesize_silence_wav(),
+        media_type="audio/wav",
+        headers={"X-TTS-Engine": "fallback-silence", "X-TTS-Lang": lang_code},
+    )
+
+
+@app.get("/api/v1/forecast/hourly")
+async def hourly_forecast(lat: float, lon: float, hours: int = 24):
+    """
+    Hourly ocean + atmospheric forecast timeline for the next `hours` hours.
+    Powers the 6h / 12h / 24h forecast strip in the UI.
+    """
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            weather_r = await client.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "hourly": "wind_speed_10m,wind_gusts_10m,wind_direction_10m,temperature_2m,cloud_cover,visibility,surface_pressure",
+                    "forecast_days": 2,
+                    "timezone": "auto",
+                },
+            )
+            marine_r = await client.get(
+                "https://marine-api.open-meteo.com/v1/marine",
+                params={
+                    "latitude": lat,
+                    "longitude": lon,
+                    "hourly": "wave_height,wave_period,swell_wave_height,swell_wave_period,sea_surface_temperature",
+                    "forecast_days": 2,
+                    "timezone": "auto",
+                },
+            )
+        weather = weather_r.json().get("hourly", {}) if weather_r.status_code == 200 else {}
+        marine = marine_r.json().get("hourly", {}) if marine_r.status_code == 200 else {}
+        times = weather.get("time", []) or marine.get("time", []) or []
+        n = min(len(times), hours)
+        out = []
+        for i in range(n):
+            out.append({
+                "time": times[i],
+                "wind_kmh": (weather.get("wind_speed_10m") or [None] * n)[i],
+                "gust_kmh": (weather.get("wind_gusts_10m") or [None] * n)[i],
+                "wind_dir_deg": (weather.get("wind_direction_10m") or [None] * n)[i],
+                "temp_c": (weather.get("temperature_2m") or [None] * n)[i],
+                "cloud_pct": (weather.get("cloud_cover") or [None] * n)[i],
+                "pressure_hpa": (weather.get("surface_pressure") or [None] * n)[i],
+                "vis_km": ((weather.get("visibility") or [None] * n)[i] or 0) / 1000.0,
+                "wave_m": (marine.get("wave_height") or [None] * n)[i],
+                "wave_period_s": (marine.get("wave_period") or [None] * n)[i],
+                "swell_m": (marine.get("swell_wave_height") or [None] * n)[i],
+                "sst_c": (marine.get("sea_surface_temperature") or [None] * n)[i],
+            })
+        return {
+            "coordinate": {"lat": lat, "lon": lon},
+            "hours": n,
+            "forecast": out,
+            "source": "Open-Meteo Forecast + Marine APIs (live)",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Forecast fetch failed: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
