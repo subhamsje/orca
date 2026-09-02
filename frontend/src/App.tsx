@@ -19,7 +19,6 @@ const DEMO_COORDS: Record<string, { lat: number; lon: number }> = {
 };
 
 export function App() {
-  // Set default initial tab to 'chart' so the Map / 3D Globe is immediately active on load!
   const [activeTab, setActiveTab] = useState<TabKey>('chart');
   const [language, setLanguage] = useState<string>('Marathi');
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
@@ -101,7 +100,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-ocean-950">
+    <div className="min-h-screen flex flex-col bg-[#020b14] text-slate-100 selection:bg-cyan-500 selection:text-white">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:bg-cyan-700 focus:text-white focus:px-3 focus:py-2 focus:rounded-md"
@@ -124,7 +123,7 @@ export function App() {
       <main
         id="main-content"
         tabIndex={-1}
-        className="flex-1 max-w-6xl w-full mx-auto px-4 pt-4 pb-28"
+        className="flex-1 w-full px-3 sm:px-6 py-4 pb-24"
       >
         {activeTab === 'chart' && (
           <LivingChart
