@@ -189,6 +189,32 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         onRecenter={handleRecenter}
       />
 
+      {/* Global sample chip row — verifies worldwide coverage at a glance */}
+      <div className="px-3 py-2 border-b border-ocean-800 bg-ocean-975/60 flex items-center gap-2 overflow-x-auto">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted shrink-0">
+          Jump to
+        </span>
+        {[
+          { id: 'tokyo', label: 'Tokyo Bay', lat: 35.645, lon: 139.786 },
+          { id: 'sydney', label: 'Sydney', lat: -33.8688, lon: 151.2093 },
+          { id: 'reykjavik', label: 'Reykjavík', lat: 64.1505, lon: -21.9325 },
+          { id: 'capetown', label: 'Cape Town', lat: -33.9036, lon: 18.4203 },
+          { id: 'newyork', label: 'New York', lat: 40.8128, lon: -73.8842 },
+          { id: 'riogrande', label: 'Rio Grande', lat: -32.05, lon: -52.083 },
+          { id: 'mumbai', label: 'Mumbai', lat: 18.922, lon: 72.8347 },
+        ].map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => issueTarget([chip.lat, chip.lon], 9)}
+            className="shrink-0 inline-flex items-center gap-1 rounded-full border border-ocean-700 bg-ocean-900 hover:bg-ocean-800 hover:border-cyan-700 text-slate-100 text-[11px] font-semibold px-2.5 py-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" aria-hidden="true" />
+            {chip.label}
+          </button>
+        ))}
+      </div>
+
       <MapLayerControl
         layerState={layerState}
         isOpen={isLayerControlOpen}
