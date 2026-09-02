@@ -137,11 +137,11 @@ export function App() {
         {activeTab === 'diagnostics' && <SystemDiagnostics assessment={assessment} />}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-ocean-900/95 backdrop-blur-md border-t border-ocean-800 px-2 py-2.5 z-40">
-        <div className="max-w-md mx-auto flex items-center justify-around">
+      <nav className="fixed bottom-0 left-0 right-0 bg-ocean-900/95 backdrop-blur-md border-t border-ocean-800 px-2 py-2 z-40">
+        <div className="max-w-2xl mx-auto flex items-center justify-between">
           <button
             onClick={() => setActiveTab('today')}
-            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
               activeTab === 'today' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -151,7 +151,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('chart')}
-            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
               activeTab === 'chart' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -161,7 +161,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('ask')}
-            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
               activeTab === 'ask' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -171,7 +171,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('authority')}
-            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
               activeTab === 'authority' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -181,7 +181,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('osint')}
-            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
               activeTab === 'osint' ? 'text-purple-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -191,7 +191,7 @@ export function App() {
 
           <button
             onClick={() => setActiveTab('diagnostics')}
-            className={`flex flex-col items-center space-y-1 text-xs font-bold transition ${
+            className={`flex flex-col items-center space-y-1 text-[11px] font-bold px-2 py-1 transition ${
               activeTab === 'diagnostics' ? 'text-cyan-400' : 'text-slate-400 hover:text-slate-200'
             }`}
           >

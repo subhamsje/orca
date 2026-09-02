@@ -1,20 +1,38 @@
-import React from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, Tooltip } from 'react-leaflet';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { TripAssessmentResponse } from '../types';
 import { INDIAN_HARBORS, HarborLocation } from '../utils/harbors';
-import { MapPin, Navigation, ShieldAlert, Fish, Anchor } from 'lucide-react';
+import { Navigation, Anchor, Layers } from 'lucide-react';
+
+// Fix Leaflet Default Marker Icon Asset URLs for Webpack/Vite
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
 interface LivingChartProps {
   assessment: TripAssessmentResponse | null;
   onSelectHarbor?: (harbor: HarborLocation) => void;
 }
 
+// Component to handle dynamic map resizing and re-centering
+const MapController: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+    map.flyTo(center, 8, { duration: 1.2 });
+  }, [center, map]);
+  return null;
+};
+
 // Custom Leaflet Icons
 const vesselIcon = L.divIcon({
   className: 'custom-vessel-icon',
-  html: `<div class="bg-cyan-500 text-white p-2 rounded-full shadow-lg border-2 border-white animate-bounce"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 19 21 12 17 5 21 12 2"/></svg></div>`,
+  html: `<div class="bg-cyan-500 text-white p-2 rounded-full shadow-xl border-2 border-white animate-bounce"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 19 21 12 17 5 21 12 2"/></svg></div>`,
   iconSize: [36, 36],
   iconAnchor: [18, 18],
 });
@@ -27,6 +45,8 @@ const harborIcon = L.divIcon({
 });
 
 export const LivingChart: React.FC<LivingChartProps> = ({ assessment, onSelectHarbor }) => {
+  const [mapLayer, setMapLayer] = useState<'dark' | 'osm' | 'satellite'>('dark');
+
   const centerLat = assessment?.coordinate.lat || 15.5000;
   const centerLon = assessment?.coordinate.lon || 73.8300;
 
@@ -37,43 +57,74 @@ export const LivingChart: React.FC<LivingChartProps> = ({ assessment, onSelectHa
     [centerLat + 0.08, centerLon - 0.12],
   ];
 
+  const getTileUrl = () => {
+    if (mapLayer === 'satellite') {
+      return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    }
+    if (mapLayer === 'osm') {
+      return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
+    return 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png';
+  };
+
   return (
-    <div className="p-4 space-y-4">
-      {/* Top Map Info Header */}
+    <div className="p-4 space-y-4 max-w-5xl mx-auto">
+      {/* Map Control Header */}
       <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-4 shadow-lg flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center space-x-2">
             <Navigation className="w-5 h-5 text-cyan-400" />
-            <span>Nautical Living Canvas (All Indian Harbors & EEZ)</span>
+            <span>Nautical Living Canvas (12 Major Harbors & EEZ)</span>
           </h2>
           <p className="text-xs text-slate-400">
             Real-time ISRO Ocean Model Assimilation • H3 Hex Grid • Naval Range B-4 Buffer
           </p>
         </div>
-        <div className="flex items-center space-x-2 text-xs">
-          <span className="flex items-center space-x-1 bg-emerald-950 text-emerald-300 px-2.5 py-1 rounded-md border border-emerald-800">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span>PFZ Ground</span>
-          </span>
-          <span className="flex items-center space-x-1 bg-amber-950 text-amber-300 px-2.5 py-1 rounded-md border border-amber-800">
-            <Anchor className="w-3.5 h-3.5" />
-            <span>Major Harbors ({INDIAN_HARBORS.length})</span>
-          </span>
+
+        <div className="flex items-center space-x-2">
+          <div className="bg-ocean-950 p-1 rounded-xl border border-ocean-800 flex items-center space-x-1 text-xs">
+            <Layers className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
+            <button
+              onClick={() => setMapLayer('dark')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                mapLayer === 'dark' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Nautical Dark
+            </button>
+            <button
+              onClick={() => setMapLayer('satellite')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                mapLayer === 'satellite' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Satellite
+            </button>
+            <button
+              onClick={() => setMapLayer('osm')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                mapLayer === 'osm' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              OSM Standard
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Main Leaflet Canvas */}
-      <div className="bg-ocean-900 border border-ocean-800 rounded-2xl overflow-hidden shadow-2xl h-[520px] relative z-10">
+      {/* Main Leaflet Map Container */}
+      <div className="bg-ocean-950 border border-ocean-800 rounded-2xl overflow-hidden shadow-2xl h-[550px] relative z-10">
         <MapContainer
           center={[centerLat, centerLon]}
           zoom={8}
           scrollWheelZoom={true}
-          style={{ height: '100%', width: '100%', background: '#021827' }}
+          style={{ height: '100%', width: '100%', minHeight: '550px', background: '#021827' }}
         >
-          {/* Nautical Dark Tile Layer */}
+          <MapController center={[centerLat, centerLon]} />
+
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; CARTO / Esri'
+            url={getTileUrl()}
           />
 
           {/* Render All 12 Major Indian Harbors */}
@@ -89,14 +140,14 @@ export const LivingChart: React.FC<LivingChartProps> = ({ assessment, onSelectHa
               <Tooltip permanent={false} direction="top">
                 <span className="font-bold text-xs">{harbor.name} ({harbor.state})</span>
               </Tooltip>
-              <Popup className="custom-popup">
+              <Popup>
                 <div className="p-2 space-y-1">
                   <h4 className="font-bold text-sm text-amber-400">{harbor.name}</h4>
                   <p className="text-xs text-slate-300">{harbor.description}</p>
                   <p className="text-[11px] text-cyan-400 font-medium">State: {harbor.state} ({harbor.coast} Coast)</p>
                   <button
                     onClick={() => onSelectHarbor && onSelectHarbor(harbor)}
-                    className="w-full mt-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold py-1 px-2 rounded"
+                    className="w-full mt-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold py-1.5 px-2 rounded-lg"
                   >
                     Select & Assess Trip
                   </button>
@@ -109,7 +160,7 @@ export const LivingChart: React.FC<LivingChartProps> = ({ assessment, onSelectHa
           <Marker position={[centerLat, centerLon]} icon={vesselIcon}>
             <Popup>
               <div className="p-2">
-                <h4 className="font-bold text-sm text-cyan-400">Current Vessel Location</h4>
+                <h4 className="font-bold text-sm text-cyan-400">Active Vessel Location</h4>
                 <p className="text-xs text-slate-300">Lat: {centerLat.toFixed(4)}, Lon: {centerLon.toFixed(4)}</p>
                 <p className="text-xs font-semibold text-emerald-400 mt-1">
                   Verdict: {assessment?.verdict || 'MODERATE RISK'}
@@ -123,12 +174,12 @@ export const LivingChart: React.FC<LivingChartProps> = ({ assessment, onSelectHa
             <React.Fragment key={idx}>
               <Circle
                 center={[ground.coordinates[0], ground.coordinates[1]]}
-                radius={4000}
+                radius={4500}
                 pathOptions={{
                   color: idx === 0 ? '#10b981' : '#3b82f6',
                   fillColor: idx === 0 ? '#10b981' : '#3b82f6',
-                  fillOpacity: 0.25,
-                  weight: 2,
+                  fillOpacity: 0.3,
+                  weight: 2.5,
                 }}
               >
                 <Popup>
@@ -146,33 +197,33 @@ export const LivingChart: React.FC<LivingChartProps> = ({ assessment, onSelectHa
           {/* A* Detour Waypoints Route Line */}
           <Polyline
             positions={waypoints as [number, number][]}
-            pathOptions={{ color: '#06b6d4', weight: 4, dashArray: '6, 8' }}
+            pathOptions={{ color: '#06b6d4', weight: 4, dashArray: '8, 8' }}
           />
 
           {/* Restricted Naval Range Area B-4 Zone */}
           <Circle
             center={[15.05, 73.35]}
-            radius={8000}
+            radius={8500}
             pathOptions={{
               color: '#ef4444',
               fillColor: '#ef4444',
-              fillOpacity: 0.15,
-              weight: 1.5,
-              dashArray: '4, 4',
+              fillOpacity: 0.2,
+              weight: 2,
+              dashArray: '6, 6',
             }}
           >
             <Tooltip permanent direction="center">
-              <span className="text-[10px] font-bold text-red-400">RESTRICTED NAVAL ZONE B-4</span>
+              <span className="text-[10px] font-bold text-red-400 uppercase">RESTRICTED NAVAL ZONE B-4</span>
             </Tooltip>
           </Circle>
         </MapContainer>
       </div>
 
-      {/* Bottom Harbor Quick Selector Buttons Bar */}
+      {/* Harbor Selector Bar */}
       <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-4 shadow-lg space-y-2">
         <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
-          <Fish className="w-4 h-4 text-cyan-400" />
-          <span>Quick Jump to Major Indian Coastal Harbors:</span>
+          <Anchor className="w-4 h-4 text-cyan-400" />
+          <span>Quick Select Harbor Location:</span>
         </h3>
         <div className="flex flex-wrap gap-1.5">
           {INDIAN_HARBORS.map((h) => (
