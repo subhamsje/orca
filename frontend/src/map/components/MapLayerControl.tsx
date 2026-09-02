@@ -1,6 +1,16 @@
-import React from 'react';
-import { BaseMapId, LayerGroupState, LayerCategory, MapLayerConfig } from '../types/layer';
-import { Layers, Shield, Anchor, Navigation, Eye, CheckSquare, Square, X } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import {
+  Anchor,
+  Eye,
+  Layers,
+  Navigation,
+  Shield,
+  X,
+  CheckSquare,
+  Square,
+} from 'lucide-react';
+import { BaseMapId, LayerCategory, LayerGroupState, MapLayerConfig } from '../types/layer';
+import { IconButton } from '../../ui/IconButton';
 
 interface MapLayerControlProps {
   layerState: LayerGroupState;
@@ -10,14 +20,52 @@ interface MapLayerControlProps {
   onToggleLayer: (layerId: string) => void;
 }
 
-const CATEGORY_META: Record<LayerCategory, { name: string; icon: React.ReactNode }> = {
-  BASE_MAP: { name: 'Base Map Canvas', icon: <Layers className="w-4 h-4 text-cyan-400" /> },
-  OPERATIONAL: { name: 'Operational Contacts', icon: <Eye className="w-4 h-4 text-red-400" /> },
-  MARINE: { name: 'Marine & Oceanography', icon: <Anchor className="w-4 h-4 text-emerald-400" /> },
-  BOUNDARIES: { name: 'Safety & Boundaries', icon: <Shield className="w-4 h-4 text-amber-400" /> },
-  ROUTING: { name: 'Pathfinding & Routes', icon: <Navigation className="w-4 h-4 text-cyan-400" /> },
-  ANALYTICS: { name: 'Spatial Analytics (H3)', icon: <Layers className="w-4 h-4 text-purple-400" /> },
+const CATEGORY_META: Record<LayerCategory, { name: string; icon: React.ReactNode; description: string }> = {
+  BASE_MAP: {
+    name: 'Base map',
+    icon: <Layers className="w-4 h-4 text-cyan-400" aria-hidden="true" />,
+    description: 'Underlying cartographic canvas',
+  },
+  OPERATIONAL: {
+    name: 'Operational contacts',
+    icon: <Eye className="w-4 h-4 text-red-400" aria-hidden="true" />,
+    description: 'Active vessels and incident markers',
+  },
+  MARINE: {
+    name: 'Marine & oceanography',
+    icon: <Anchor className="w-4 h-4 text-emerald-400" aria-hidden="true" />,
+    description: 'Fishing grounds, environmental hazards',
+  },
+  BOUNDARIES: {
+    name: 'Safety & boundaries',
+    icon: <Shield className="w-4 h-4 text-amber-400" aria-hidden="true" />,
+    description: 'IMBL, EEZ, restricted zones',
+  },
+  ROUTING: {
+    name: 'Pathfinding & routes',
+    icon: <Navigation className="w-4 h-4 text-cyan-400" aria-hidden="true" />,
+    description: 'Planned routes and alternatives',
+  },
+  ANALYTICS: {
+    name: 'Spatial analytics',
+    icon: <Layers className="w-4 h-4 text-purple-400" aria-hidden="true" />,
+    description: 'H3 grid and dark-fleet intelligence',
+  },
 };
+
+const BASE_MAP_OPTIONS: { id: BaseMapId; label: string }[] = [
+  { id: 'nautical_dark', label: 'Nautical' },
+  { id: 'satellite_esri', label: 'Satellite' },
+  { id: 'osm_standard', label: 'Standard' },
+];
+
+const NON_BASE_CATEGORIES: LayerCategory[] = [
+  'OPERATIONAL',
+  'MARINE',
+  'BOUNDARIES',
+  'ROUTING',
+  'ANALYTICS',
+];
 
 export const MapLayerControl: React.FC<MapLayerControlProps> = ({
   layerState,
@@ -26,124 +74,161 @@ export const MapLayerControl: React.FC<MapLayerControlProps> = ({
   onSelectBaseMap,
   onToggleLayer,
 }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    panelRef.current?.focus();
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  const groupByCategory = () => {
-    const groups: Record<LayerCategory, MapLayerConfig[]> = {
-      BASE_MAP: [],
-      OPERATIONAL: [],
-      MARINE: [],
-      BOUNDARIES: [],
-      ROUTING: [],
-      ANALYTICS: [],
-    };
-
-    Object.values(layerState.layers).forEach((layer) => {
-      groups[layer.category].push(layer);
-    });
-
-    return groups;
+  const groupedLayers: Record<LayerCategory, MapLayerConfig[]> = {
+    BASE_MAP: [],
+    OPERATIONAL: [],
+    MARINE: [],
+    BOUNDARIES: [],
+    ROUTING: [],
+    ANALYTICS: [],
   };
 
-  const groupedLayers = groupByCategory();
+  Object.values(layerState.layers).forEach((layer) => {
+    groupedLayers[layer.category].push(layer);
+  });
 
   return (
-    <div className="absolute top-14 left-4 z-[1000] w-80 bg-ocean-950/95 border border-ocean-800 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden max-h-[80vh] flex flex-col">
-      {/* Header */}
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="false"
+      aria-label="Map layer control"
+      tabIndex={-1}
+      className="absolute top-16 left-3 right-3 sm:left-4 sm:right-auto sm:w-80 z-[1000] bg-ocean-950/95 border border-ocean-800 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden max-h-[80vh] flex flex-col animate-in slide-in-from-left-2 fade-in duration-200"
+    >
       <div className="p-4 border-b border-ocean-800 flex items-center justify-between bg-ocean-900/80">
-        <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-          <Layers className="w-4 h-4 text-cyan-400" />
-          <span>Layer Control Workspace</span>
+        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+          <Layers className="w-4 h-4 text-cyan-400" aria-hidden="true" />
+          Layer control
         </h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-white transition">
-          <X className="w-4 h-4" />
-        </button>
+        <IconButton label="Close layer control" icon={<X />} variant="ghost" size="sm" onClick={onClose} />
       </div>
 
       <div className="p-4 space-y-4 overflow-y-auto flex-1 text-xs">
-        {/* Base Map Selector Section */}
-        <div className="space-y-2">
-          <span className="font-bold text-slate-300 uppercase tracking-wider text-[10px] block">
-            Base Map Canvas
-          </span>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              onClick={() => onSelectBaseMap('nautical_dark')}
-              className={`p-2 rounded-xl border text-center font-bold transition ${
-                layerState.baseMapId === 'nautical_dark'
-                  ? 'bg-cyan-950 border-cyan-500 text-cyan-300'
-                  : 'bg-ocean-900 border-ocean-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Nautical Dark
-            </button>
-            <button
-              onClick={() => onSelectBaseMap('satellite_esri')}
-              className={`p-2 rounded-xl border text-center font-bold transition ${
-                layerState.baseMapId === 'satellite_esri'
-                  ? 'bg-cyan-950 border-cyan-500 text-cyan-300'
-                  : 'bg-ocean-900 border-ocean-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Satellite
-            </button>
-            <button
-              onClick={() => onSelectBaseMap('osm_standard')}
-              className={`p-2 rounded-xl border text-center font-bold transition ${
-                layerState.baseMapId === 'osm_standard'
-                  ? 'bg-cyan-950 border-cyan-500 text-cyan-300'
-                  : 'bg-ocean-900 border-ocean-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              Standard
-            </button>
+        <section aria-labelledby="basemap-heading" className="space-y-2">
+          <h4
+            id="basemap-heading"
+            className="font-bold text-slate-300 uppercase tracking-wider text-[10px]"
+          >
+            Base map
+          </h4>
+          <div role="radiogroup" aria-labelledby="basemap-heading" className="grid grid-cols-3 gap-1.5">
+            {BASE_MAP_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={layerState.baseMapId === opt.id}
+                onClick={() => onSelectBaseMap(opt.id)}
+                className={[
+                  'p-2 rounded-xl border text-center font-bold transition',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ocean-950',
+                  layerState.baseMapId === opt.id
+                    ? 'bg-cyan-950 border-cyan-500 text-cyan-200'
+                    : 'bg-ocean-900 border-ocean-800 text-slate-400 hover:text-slate-200',
+                ].join(' ')}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-        </div>
+        </section>
 
-        {/* Grouped Operational Layers */}
-        {(['OPERATIONAL', 'MARINE', 'BOUNDARIES', 'ROUTING', 'ANALYTICS'] as LayerCategory[]).map(
-          (category) => (
-            <div key={category} className="space-y-2 pt-2 border-t border-ocean-900">
-              <div className="flex items-center space-x-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
-                {CATEGORY_META[category].icon}
-                <span>{CATEGORY_META[category].name}</span>
-              </div>
-
+        {NON_BASE_CATEGORIES.map((category) => {
+          const layers = groupedLayers[category];
+          if (layers.length === 0) return null;
+          const meta = CATEGORY_META[category];
+          return (
+            <section
+              key={category}
+              aria-labelledby={`cat-${category}`}
+              className="space-y-2 pt-2 border-t border-ocean-900"
+            >
+              <h4
+                id={`cat-${category}`}
+                className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]"
+              >
+                {meta.icon}
+                <span>{meta.name}</span>
+              </h4>
+              <p className="text-[10px] text-ink-subtle">{meta.description}</p>
               <div className="space-y-1.5">
-                {groupedLayers[category].map((layer) => (
-                  <button
-                    key={layer.id}
-                    onClick={() => onToggleLayer(layer.id)}
-                    disabled={!layer.isAvailable}
-                    className={`w-full p-2.5 rounded-xl border flex items-center justify-between text-left transition ${
-                      layer.enabled
-                        ? 'bg-ocean-900/90 border-cyan-800/80 text-white'
-                        : 'bg-ocean-950 border-ocean-900 text-slate-400 opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      {layer.enabled ? (
-                        <CheckSquare className="w-4 h-4 text-cyan-400 shrink-0" />
-                      ) : (
-                        <Square className="w-4 h-4 text-slate-500 shrink-0" />
-                      )}
-                      <div>
-                        <span className="font-bold text-xs block">{layer.name}</span>
-                        <span className="text-[10px] text-slate-400 block">{layer.description}</span>
+                {layers.map((layer) => {
+                  const unavailable = !layer.isAvailable;
+                  return (
+                    <button
+                      key={layer.id}
+                      type="button"
+                      role="switch"
+                      aria-checked={layer.enabled}
+                      aria-disabled={unavailable || undefined}
+                      onClick={() => !unavailable && onToggleLayer(layer.id)}
+                      disabled={unavailable}
+                      className={[
+                        'w-full p-2.5 rounded-xl border flex items-center justify-between text-left transition',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ocean-950',
+                        layer.enabled
+                          ? 'bg-ocean-900/90 border-cyan-800/80 text-white'
+                          : 'bg-ocean-950 border-ocean-900 text-slate-400',
+                        unavailable ? 'opacity-60 cursor-not-allowed' : '',
+                      ].join(' ')}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {layer.enabled ? (
+                          <CheckSquare className="w-4 h-4 text-cyan-400 shrink-0" aria-hidden="true" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+                        )}
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs block truncate">{layer.name}</span>
+                          <span className="text-[10px] text-slate-400 block truncate">
+                            {layer.description}
+                          </span>
+                          {layer.source && (
+                            <span className="text-[9px] text-ink-subtle block truncate">
+                              {layer.source}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-
-                    {layer.freshnessStatus && (
-                      <span className="text-[9px] bg-ocean-950 text-cyan-300 px-1.5 py-0.5 rounded border border-ocean-800 shrink-0">
-                        {layer.freshnessStatus}
+                      <span
+                        className={[
+                          'text-[9px] px-1.5 py-0.5 rounded border shrink-0',
+                          layer.freshnessStatus === 'LIVE'
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                            : layer.freshnessStatus === 'RECENT'
+                              ? 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                              : layer.freshnessStatus === 'STALE'
+                                ? 'bg-amber-950 text-amber-300 border-amber-800'
+                                : 'bg-ocean-950 text-slate-300 border-ocean-800',
+                        ].join(' ')}
+                      >
+                        {layer.freshnessStatus ?? 'UNKNOWN'}
                       </span>
-                    )}
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
-          )
-        )}
+            </section>
+          );
+        })}
       </div>
     </div>
   );

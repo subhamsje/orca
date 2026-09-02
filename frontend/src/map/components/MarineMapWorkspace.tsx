@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Layers, WifiOff, Wifi } from 'lucide-react';
 import { TripAssessmentResponse } from '../../types';
-import { BaseMapId, LayerGroupState, DEFAULT_MAP_LAYERS } from '../types/layer';
+import { BaseMapId, DEFAULT_BASE_MAP, DEFAULT_MAP_LAYERS, LayerGroupState } from '../types/layer';
 import { MapFeature } from '../types/feature';
-import { convertTripAssessmentToMapFeatures } from '../adapters/featureAdapter';
-import { DEMO_SIMULATION_FEATURES } from '../fixtures/devFixtures';
+import {
+  convertTripAssessmentToMapFeatures,
+  AdapterContext,
+} from '../adapters/featureAdapter';
+import {
+  DEMO_SIMULATION_FEATURES,
+  shouldRenderDemoFeatures,
+} from '../fixtures/devFixtures';
 import { LeafletMapContainer } from './LeafletMapContainer';
 import { MapTopBar } from './MapTopBar';
 import { MapLayerControl } from './MapLayerControl';
@@ -12,50 +19,81 @@ import { FeatureDetailDrawer } from './FeatureDetailDrawer';
 import { HarborLocation } from '../../utils/harbors';
 import { LoadingState } from '../../ui/LoadingState';
 import { EmptyState } from '../../ui/EmptyState';
-import { Layers } from 'lucide-react';
+import { Button } from '../../ui/Button';
+import { StatusIndicator } from '../../ui/StatusIndicator';
 
 interface MarineMapWorkspaceProps {
   assessment: TripAssessmentResponse | null;
   isLoading?: boolean;
   onSelectHarbor?: (harbor: HarborLocation) => void;
+  context?: AdapterContext;
 }
+
+interface ProgrammaticView {
+  center: [number, number];
+  zoom: number;
+  /** Monotonically increasing counter — bumped each time the consumer
+   *  issues a "fly here" command. Used to avoid user-pan → flyTo loops. */
+  nonce: number;
+}
+
+const INITIAL_CENTER: [number, number] = [15.5, 73.83];
+const INITIAL_ZOOM = 6;
 
 export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
   assessment,
   isLoading = false,
   onSelectHarbor,
+  context,
 }) => {
-  const initialCenter: [number, number] = assessment
-    ? [assessment.coordinate.lat, assessment.coordinate.lon]
-    : [15.5000, 73.8300];
-
-  const [center, setCenter] = useState<[number, number]>(initialCenter);
-  const [zoom, setZoom] = useState<number>(8);
-  const [isLayerControlOpen, setIsLayerControlOpen] = useState<boolean>(false);
-  const [selectedFeature, setSelectedFeature] = useState<MapFeature | null>(null);
-
-  const [layerState, setLayerState] = useState<LayerGroupState>({
-    baseMapId: 'nautical_dark',
-    layers: DEFAULT_MAP_LAYERS,
-  });
-
-  useEffect(() => {
+  const initialView = useMemo<ProgrammaticView>(() => {
     if (assessment) {
-      setCenter([assessment.coordinate.lat, assessment.coordinate.lon]);
+      return {
+        center: [assessment.coordinate.lat, assessment.coordinate.lon],
+        zoom: 8,
+        nonce: 0,
+      };
     }
+    return { center: INITIAL_CENTER, zoom: INITIAL_ZOOM, nonce: 0 };
   }, [assessment]);
 
-  // Combine live converted backend features + clearly marked development fixtures
-  const liveFeatures = convertTripAssessmentToMapFeatures(assessment);
-  const allFeatures: MapFeature[] = [...liveFeatures, ...DEMO_SIMULATION_FEATURES];
+  const [target, setTarget] = useState<ProgrammaticView>(initialView);
+  const [liveCenter, setLiveCenter] = useState<[number, number]>(initialView.center);
+  const [liveZoom, setLiveZoom] = useState<number>(initialView.zoom);
+  const [layerState, setLayerState] = useState<LayerGroupState>({
+    baseMapId: DEFAULT_BASE_MAP,
+    layers: DEFAULT_MAP_LAYERS,
+  });
+  const [selectedFeature, setSelectedFeature] = useState<MapFeature | null>(null);
+  const [isLayerControlOpen, setIsLayerControlOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? !navigator.onLine : false,
+  );
 
-  const activeLayersCount = Object.values(layerState.layers).filter((l) => l.enabled).length;
+  // Combine live (backend) features with clearly-labeled fixtures when
+  // the developer opts in via the ?demoFixtures=1 flag or DEV mode.
+  const features = useMemo<ReadonlyArray<MapFeature>>(() => {
+    const live = convertTripAssessmentToMapFeatures(assessment, context);
+    return shouldRenderDemoFeatures() ? [...live, ...DEMO_SIMULATION_FEATURES] : live;
+  }, [assessment, context]);
 
-  const handleSelectBaseMap = (baseMapId: BaseMapId) => {
+  const activeLayersCount = useMemo(
+    () => Object.values(layerState.layers).filter((l) => l.enabled).length,
+    [layerState.layers],
+  );
+
+  const issueTarget = useCallback(
+    (center: [number, number], zoom: number) => {
+      setTarget((prev) => ({ center, zoom, nonce: prev.nonce + 1 }));
+    },
+    [],
+  );
+
+  const handleSelectBaseMap = useCallback((baseMapId: BaseMapId) => {
     setLayerState((prev) => ({ ...prev, baseMapId }));
-  };
+  }, []);
 
-  const handleToggleLayer = (layerId: string) => {
+  const handleToggleLayer = useCallback((layerId: string) => {
     setLayerState((prev) => {
       const current = prev.layers[layerId];
       if (!current) return prev;
@@ -67,52 +105,91 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         },
       };
     });
-  };
+  }, []);
 
-  const handleSearch = (query: string) => {
-    // Coordinate search (e.g. "16.02, 73.48")
-    const parts = query.split(',').map((p) => parseFloat(p.trim()));
-    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      setCenter([parts[0], parts[1]]);
-      setZoom(10);
-      return;
-    }
+  const handleSearch = useCallback(
+    (query: string) => {
+      const parts = query.split(',').map((p) => parseFloat(p.trim()));
+      if (parts.length === 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
+        issueTarget([parts[0], parts[1]], 10);
+        return;
+      }
+      const found = features.find((f) =>
+        f.name.toLowerCase().includes(query.toLowerCase()),
+      );
+      if (found) {
+        setSelectedFeature(found);
+        issueTarget(found.position, 10);
+      }
+    },
+    [features, issueTarget],
+  );
 
-    // Feature name search
-    const found = allFeatures.find((f) => f.name.toLowerCase().includes(query.toLowerCase()));
-    if (found) {
-      setSelectedFeature(found);
-      setCenter(found.position);
-      setZoom(10);
+  const handleFitBounds = useCallback(() => {
+    if (features.length > 0) {
+      issueTarget(features[0].position, 8);
     }
-  };
+  }, [features, issueTarget]);
 
-  const handleFitBounds = () => {
-    if (allFeatures.length > 0) {
-      setCenter(allFeatures[0].position);
-      setZoom(8);
-    }
-  };
+  const handleRecenter = useCallback(() => {
+    issueTarget(initialView.center, initialView.zoom);
+  }, [initialView, issueTarget]);
+
+  const handleSelectHarbor = useCallback(
+    (harbor: HarborLocation) => {
+      onSelectHarbor?.(harbor);
+      issueTarget([harbor.lat, harbor.lon], 9);
+    },
+    [issueTarget, onSelectHarbor],
+  );
+
+  // The user pan/zoom path: only updates the live coordinate/zoom used
+  // by the top bar — does NOT touch `target`, so the map does not try
+  // to flyTo on every move.
+  const handleViewportChange = useCallback((center: [number, number], zoom: number) => {
+    setLiveCenter(center);
+    setLiveZoom(zoom);
+  }, []);
+
+  const handleRecenteringToFeature = useCallback(
+    (position: [number, number]) => {
+      issueTarget(position, 11);
+    },
+    [issueTarget],
+  );
+
+  const handleClearSelection = useCallback(() => setSelectedFeature(null), []);
+
+  // Online/offline indicator (read once at mount; an event listener would
+  // be added in a future iteration).
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   return (
-    <div className="w-full flex flex-col rounded-2xl overflow-hidden border border-ocean-800 bg-ocean-950 shadow-2xl relative h-[650px] md:h-[700px]">
-      {/* Top Search & Status Bar */}
+    <section
+      aria-label="Marine operations map workspace"
+      className="w-full flex flex-col rounded-2xl overflow-hidden border border-ocean-800 bg-ocean-950 shadow-2xl relative h-[560px] sm:h-[640px] md:h-[680px]"
+    >
       <MapTopBar
-        center={center}
-        zoom={zoom}
+        center={liveCenter}
+        zoom={liveZoom}
         activeLayersCount={activeLayersCount}
-        isOnline={navigator.onLine}
-        freshness="LIVE"
+        isOffline={isOffline}
+        connectivity={isOffline ? 'OFFLINE' : 'NORMAL'}
         onSearch={handleSearch}
-        onSelectHarbor={(h) => {
-          if (onSelectHarbor) onSelectHarbor(h);
-          setCenter([h.lat, h.lon]);
-          setZoom(9);
-        }}
-        onRecenter={() => setCenter(initialCenter)}
+        onSelectHarbor={handleSelectHarbor}
+        onRecenter={handleRecenter}
       />
 
-      {/* Floating Layer Controls Panel */}
       <MapLayerControl
         layerState={layerState}
         isOpen={isLayerControlOpen}
@@ -121,68 +198,75 @@ export const MarineMapWorkspace: React.FC<MarineMapWorkspaceProps> = ({
         onToggleLayer={handleToggleLayer}
       />
 
-      {/* Floating Action Controls (+, -, Fit, Recenter) */}
       <MapFloatingControls
-        onZoomIn={() => setZoom((z) => Math.min(z + 1, 18))}
-        onZoomOut={() => setZoom((z) => Math.max(z - 1, 3))}
+        onZoomIn={() => issueTarget(target.center, Math.min(target.zoom + 1, 18))}
+        onZoomOut={() => issueTarget(target.center, Math.max(target.zoom - 1, 3))}
         onFitBounds={handleFitBounds}
-        onRecenter={() => setCenter(initialCenter)}
-        onToggleLayerControl={() => setIsLayerControlOpen((open) => !open)}
+        onRecenter={handleRecenter}
+        onToggleLayerControl={() => setIsLayerControlOpen((o) => !o)}
         isLayerControlOpen={isLayerControlOpen}
       />
 
-      {/* Loading Overlay */}
       {isLoading && (
         <div className="absolute inset-0 z-[1100] bg-ocean-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <LoadingState
             variant="panel"
-            label="Assimilating Geospatial Layers & ISRO Ocean Models…"
-            description="Processing SST rasters, H3 spatial grid, and A* detour waypoints"
+            label="Loading geospatial data"
+            description="Connecting to ORCA ocean bio-physics feeds."
           />
         </div>
       )}
 
-      {/* Empty State Overlay when all layers disabled */}
       {activeLayersCount === 0 && !isLoading && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1050] max-w-md w-full p-2">
           <EmptyState
             icon={<Layers className="w-5 h-5 text-amber-400" />}
-            title="All Map Layers Disabled"
-            description="Open the Layer Control panel (top-right button) to enable Operational, Marine, or Boundary layers."
+            title="All map layers disabled"
+            description="Open the layer control panel to enable operational, marine, or boundary layers."
             primaryAction={{
-              label: 'Open Layer Control',
+              label: 'Open layer control',
               onClick: () => setIsLayerControlOpen(true),
             }}
           />
         </div>
       )}
 
-      {/* Center Leaflet Map Container */}
-      <div className="flex-1 w-full h-full relative">
+      <div className="flex-1 min-h-0 relative">
         <LeafletMapContainer
-          center={center}
-          zoom={zoom}
+          center={target.center}
+          zoom={target.zoom}
+          flyToNonce={target.nonce}
           baseMapId={layerState.baseMapId}
           layerState={layerState}
-          features={allFeatures}
+          features={features}
           selectedFeatureId={selectedFeature?.id ?? null}
-          onSelectFeature={(feature) => setSelectedFeature(feature)}
-          onViewportChange={(c, z) => {
-            setCenter(c);
-            setZoom(z);
-          }}
+          onSelectFeature={setSelectedFeature}
+          onViewportChange={handleViewportChange}
         />
       </div>
 
-      {/* Selected Feature Detail Drawer */}
       <FeatureDetailDrawer
         feature={selectedFeature}
-        onClose={() => setSelectedFeature(null)}
-        onRecenterToFeature={(pos) => {
-          setCenter(pos);
-          setZoom(11);
-        }}
+        onClose={handleClearSelection}
+        onRecenterToFeature={handleRecenteringToFeature}
       />
-    </div>
+
+      <div className="px-3 py-1.5 border-t border-ocean-800 bg-ocean-975 flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+        <StatusIndicator
+          state={isOffline ? 'OFFLINE' : 'NORMAL'}
+          label={isOffline ? 'Offline mode' : 'Online'}
+        />
+        <Button
+          size="sm"
+          variant="ghost"
+          leadingIcon={isOffline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+          onClick={() => setIsOffline((o) => !o)}
+          aria-label="Toggle simulated network state for accessibility testing"
+          className="text-[11px] px-2 py-0.5"
+        >
+          Toggle network (dev)
+        </Button>
+      </div>
+    </section>
   );
 };
