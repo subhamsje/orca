@@ -21,12 +21,27 @@ class SafetyAgent:
         vessel_length_m: float = 8.5,
         vessel_profile: Optional[dict] = None
     ) -> Dict[str, Any]:
-        swh = wave_metrics.get("significant_wave_height_m", 1.1)
-        wind_speed = weather_metrics.get("wind_speed_kmh", 16.5)
-        wind_gust = weather_metrics.get("wind_gust_kmh", 22.0)
-        swell_period = wave_metrics.get("swell_period_sec", 10.5)
+        swh = wave_metrics.get("significant_wave_height_m")
+        wind_speed = weather_metrics.get("wind_speed_kmh")
+        wind_gust = weather_metrics.get("wind_gust_kmh")
+        swell_period = wave_metrics.get("swell_period_sec")
 
         prof = vessel_profile or {"length_m": vessel_length_m, "beam_m": 2.2}
+
+        # If essential ocean state is missing, we cannot safely evaluate.
+        # Return a "DATA_UNAVAILABLE" verdict so the UI displays the gap
+        # rather than guessing.
+        if swh is None or wind_speed is None or wind_gust is None or swell_period is None:
+            return {
+                "risk_score": 60,
+                "verdict_label": "DATA_UNAVAILABLE — cannot compute safety",
+                "override_active": True,
+                "override_reason": "Live ocean / wind data unavailable for this point. No safety verdict possible.",
+                "vessel_evaluation": evaluate_vessel_seaworthiness(1.0, 0.0, prof),
+                "wave_steepness_ratio": 0.0,
+                "audit_trail": {"rule_triggered": "DATA_UNAVAILABLE_NO_RISK_CALCULATION"},
+            }
+
         vessel_eval = evaluate_vessel_seaworthiness(swh, wind_speed, prof)
         max_safe_wave = vessel_eval["max_safe_wave_m"]
 

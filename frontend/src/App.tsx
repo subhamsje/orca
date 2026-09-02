@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CommandPalette,
+  CatchReportForm,
+  CycloneAlertBanner,
   EconomicBoard,
+  ForecastTimeline,
   GlobalHarborDirectory,
   InterAgentStream,
   MapStage,
@@ -13,6 +16,7 @@ import {
   TopBar,
   VerdictHero,
   VesselProfileModal,
+  VesselSeaworthinessGauge,
   VoiceAssistant,
 } from './ui/orca';
 import { TripAssessmentResponse, VesselProfile, verdictTone } from './types';
@@ -93,6 +97,14 @@ export function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // ---------- auto-refresh every 5 minutes ----------
+  useEffect(() => {
+    const t = setInterval(() => {
+      loadAssessment(selectedHarbor.lat, selectedHarbor.lon);
+    }, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [loadAssessment, selectedHarbor]);
 
   // ---------- keyboard shortcuts ----------
   useEffect(() => {
@@ -215,6 +227,19 @@ export function App() {
         <div className="pointer-events-auto">
           <OceanVitals assessment={assessment} />
         </div>
+        {assessment?.world_model?.vessel_twin && assessment?.world_model?.ocean_state && (
+          <div className="pointer-events-auto">
+            <VesselSeaworthinessGauge
+              vessel={assessment.world_model.vessel_twin}
+              ocean={assessment.world_model.ocean_state}
+              currentWaveSteepness={assessment.world_model.risk_state.wave_steepness_ratio}
+              capsizingRisk={assessment.world_model.risk_state.capsizing_risk}
+            />
+          </div>
+        )}
+        <div className="pointer-events-auto">
+          <ForecastTimeline lat={selectedHarbor.lat} lon={selectedHarbor.lon} hours={24} />
+        </div>
         <div className="pointer-events-auto">
           <MultiObjectiveRoutePicker
             routes={assessment?.multi_objective_routes}
@@ -233,17 +258,11 @@ export function App() {
         <div className="pointer-events-auto">
           <EconomicBoard economic={assessment?.economics} />
         </div>
-        <div className="pointer-events-auto">
-          <OsintPanel intelligence={assessment?.osint_sector_intelligence} />
-        </div>
-        <div className="pointer-events-auto">
-          <InterAgentStream events={assessment?.inter_agent_event_bus} />
-        </div>
       </aside>
 
       {/* Right rail — global harbor directory */}
-      <aside className="absolute right-3 top-[5.25rem] bottom-20 z-20 w-[18rem] max-w-[calc(100vw-1.5rem)] hidden 2xl:flex flex-col pointer-events-none">
-        <div className="pointer-events-auto h-full">
+      <aside className="absolute right-3 top-[5.25rem] bottom-20 z-20 w-[18rem] max-w-[calc(100vw-1.5rem)] hidden 2xl:flex flex-col gap-3 pointer-events-none">
+        <div className="pointer-events-auto h-2/5 min-h-[18rem]">
           <GlobalHarborDirectory
             selectedHarborId={selectedHarbor.id}
             onSelect={handleSelectHarbor}
@@ -259,7 +278,15 @@ export function App() {
             isLoading={isLoadingAssessment}
           />
         </div>
+        <div className="pointer-events-auto h-3/5 min-h-[20rem] overflow-y-auto pr-1 space-y-3">
+          <CatchReportForm lat={selectedHarbor.lat} lon={selectedHarbor.lon} />
+          <OsintPanel intelligence={assessment?.osint_sector_intelligence} />
+          <InterAgentStream events={assessment?.inter_agent_event_bus} />
+        </div>
       </aside>
+
+      {/* Cyclone / OSINT advisory banner (always-on, dismissible) */}
+      <CycloneAlertBanner lat={selectedHarbor.lat} lon={selectedHarbor.lon} />
 
       {/* Bottom status chip — single floating element */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">

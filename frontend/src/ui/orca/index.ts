@@ -11,4 +11,8 @@ export { TopBar } from './TopBar';
 export { VesselProfileModal } from './VesselProfileModal';
 export { MapStage } from './MapStage';
 export { VoiceAssistant } from './VoiceAssistant';
+export { ForecastTimeline } from './ForecastTimeline';
+export { CycloneAlertBanner } from './CycloneAlertBanner';
+export { VesselSeaworthinessGauge } from './VesselSeaworthinessGauge';
+export { CatchReportForm } from './CatchReportForm';
 export type { MapStageHandle } from './MapStage';

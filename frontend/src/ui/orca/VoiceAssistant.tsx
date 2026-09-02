@@ -1,10 +1,21 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { AudioLines, Mic, MicOff, Send, Sparkles, Volume2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AudioLines,
+  Mic,
+  MicOff,
+  Send,
+  Sparkles,
+  Volume2,
+  X,
+  Radio,
+  AlertCircle,
+} from 'lucide-react';
 import { TripAssessmentResponse } from '../../types';
 import { useSpeech } from '../../hooks/useSpeech';
-import { fetchTripAssessment } from '../../utils/api';
+import { fetchTripAssessment, API_BASE_URL } from '../../utils/api';
 
-// Minimal SpeechRecognition typings (DOM lib does not include them in TS yet).
+type RecorderState = 'idle' | 'recording' | 'processing' | 'error';
+
 type SR = {
   lang: string;
   continuous: boolean;
@@ -24,7 +35,6 @@ interface VoiceAssistantProps {
   vesselLengthM: number;
   latestAssessment: TripAssessmentResponse | null;
   onQuerySubmit: (text: string) => Promise<TripAssessmentResponse>;
-  onOpenFull?: () => void;
 }
 
 interface Message {
@@ -32,21 +42,24 @@ interface Message {
   sender: 'user' | 'orca';
   text: string;
   timestamp: string;
+  engine?: string;
 }
 
-const QUICK_PROMPTS = [
+const QUICK_PROMPTS_EN = [
   'Is it safe to go fishing tomorrow morning?',
   'What is the wave height at my harbor right now?',
   'Which is the best harbor to sell today?',
   'How much fuel will I burn for 30 km?',
   'Is there any cyclone alert nearby?',
+  'Read me today’s weather summary.',
 ];
 
-const MARATHI_PROMPTS = [
+const QUICK_PROMPTS_IN = [
   'उद्या सकाळी मासेमारीसाठी जाणे सुरक्षित आहे का?',
   'सध्या माझ्या बंदराजवळ लाटांची उंची किती आहे?',
   'आज कोणत्या बंदरात भाव जास्त आहे?',
   '३० किमी प्रवासासाठी डिझेल किती लागेल?',
+  'जवळपास चक्रीवादळाचा इशारा आहे का?',
 ];
 
 export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
@@ -58,18 +71,187 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   onQuerySubmit,
 }) => {
   const [open, setOpen] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
+  const [recorderState, setRecorderState] = useState<RecorderState>('idle');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [sttEngine, setSttEngine] = useState<string>('web-speech-api');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const chunksRef = useRef<Blob[]>([]);
   const speech = useSpeech(language);
 
-  const prompts =
-    language.toLowerCase().includes('marathi') || language.toLowerCase().includes('hindi')
-      ? MARATHI_PROMPTS
-      : QUICK_PROMPTS;
+  const langMap: Record<string, string> = {
+    English: 'en',
+    Marathi: 'mr',
+    Hindi: 'hi',
+    Gujarati: 'gu',
+    Tamil: 'ta',
+    Telugu: 'te',
+    Malayalam: 'ml',
+    Kannada: 'kn',
+    Bengali: 'bn',
+  };
 
+  const isIndian = language !== 'English';
+  const prompts = isIndian ? QUICK_PROMPTS_IN : QUICK_PROMPTS_EN;
+  const voiceLangCode = langMap[language] ?? 'en';
+
+  // -- Audio level meter (used while recording) -----------------------------
+  const startLevelMeter = useCallback((stream: MediaStream) => {
+    try {
+      const Ctx =
+        (window as unknown as { AudioContext?: typeof AudioContext })
+          .AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
+      audioContextRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        setAudioLevel(Math.min(1, rms * 4));
+        animFrameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (e) {
+      console.warn('audio meter failed', e);
+    }
+  }, []);
+
+  const stopLevelMeter = useCallback(() => {
+    cancelAnimationFrame(animFrameRef.current);
+    setAudioLevel(0);
+    try {
+      audioContextRef.current?.close();
+    } catch {}
+    audioContextRef.current = null;
+    analyserRef.current = null;
+  }, []);
+
+  // -- Server-side STT (POST recorded blob to /api/v1/voice/transcribe) -----
+  const transcribeWithServer = useCallback(
+    async (blob: Blob): Promise<string | null> => {
+      try {
+        const form = new FormData();
+        const filename = `recording.${blob.type.includes('ogg') ? 'ogg' : 'webm'}`;
+        form.append('audio', blob, filename);
+        const res = await fetch(
+          `${API_BASE_URL}/api/v1/voice/transcribe?language=${voiceLangCode}`,
+          { method: 'POST', body: form },
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        setSttEngine(`server:${data.engine ?? 'whisper'}`);
+        return (data.text || '').trim();
+      } catch (e) {
+        console.warn('server STT failed', e);
+        return null;
+      }
+    },
+    [voiceLangCode],
+  );
+
+  // -- Core: start / stop MediaRecorder -------------------------------------
+  const startRecording = useCallback(async () => {
+    setRecorderState('recording');
+    setInput('');
+    chunksRef.current = [];
+
+    // Pick best mime type
+    const mimeCandidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+    let mimeType = '';
+    for (const m of mimeCandidates) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) {
+        mimeType = m;
+        break;
+      }
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      setRecorderState('error');
+      alert('Audio recording is not supported in this browser. Please type your query.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      mediaRecorderRef.current = recorder;
+      startLevelMeter(stream);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        stopLevelMeter();
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, {
+          type: mimeType || 'audio/webm',
+        });
+        if (blob.size < 1000) {
+          setRecorderState('error');
+          return;
+        }
+        setRecorderState('processing');
+        const text = await transcribeWithServer(blob);
+        if (text) {
+          setInput(text);
+          sendMessage(text);
+        } else {
+          setRecorderState('error');
+        }
+      };
+
+      recorder.start();
+    } catch (err) {
+      console.error('Mic permission denied or unavailable', err);
+      setRecorderState('error');
+      alert('Microphone unavailable. You can still type your query.');
+    }
+  }, [startLevelMeter, stopLevelMeter, transcribeWithServer]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  const toggleRecording = useCallback(() => {
+    if (recorderState === 'recording') {
+      stopRecording();
+    } else if (recorderState === 'idle' || recorderState === 'error') {
+      setSttEngine('web-mediarecorder');
+      startRecording();
+    }
+  }, [recorderState, startRecording, stopRecording]);
+
+  // -- Send a message and play the answer -----------------------------------
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -88,9 +270,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       setIsLoading(true);
 
       try {
-        const assessment =
-          (await onQuerySubmit(trimmed)) ??
-          (await fetchTripAssessment(lat, lon, vesselLengthM, language, trimmed));
+        const assessment = await onQuerySubmit(trimmed);
         const orcaMsg: Message = {
           id: `o-${Date.now()}`,
           sender: 'orca',
@@ -101,6 +281,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           }),
         };
         setMessages((prev) => [...prev, orcaMsg]);
+        // Play the response aloud via browser SpeechSynthesis
         speech.play(orcaMsg.text);
         setTimeout(() => {
           scrollRef.current?.scrollTo({
@@ -109,68 +290,52 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           });
         }, 60);
       } catch (err) {
-        const errorMsg: Message = {
-          id: `o-${Date.now()}`,
-          sender: 'orca',
-          text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        };
-        setMessages((prev) => [...prev, errorMsg]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e-${Date.now()}`,
+            sender: 'orca',
+            text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          },
+        ]);
       } finally {
         setIsLoading(false);
+        setRecorderState('idle');
       }
     },
-    [isLoading, onQuerySubmit, lat, lon, vesselLengthM, language, speech],
+    [isLoading, onQuerySubmit, speech],
   );
 
-  const toggleRecording = useCallback(() => {
-    const SRConstructor =
-      (window as unknown as { SpeechRecognition?: new () => SR })
-        .SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: new () => SR })
-        .webkitSpeechRecognition;
-    if (!SRConstructor) {
-      alert('Voice recognition not supported in this browser. Please type your query.');
-      return;
-    }
-    if (isRecording) {
-      setIsRecording(false);
-      return;
-    }
-    const recognition = new SRConstructor();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    const langMap: Record<string, string> = {
-      English: 'en-IN',
-      Marathi: 'mr-IN',
-      Hindi: 'hi-IN',
-      Gujarati: 'gu-IN',
-      Tamil: 'ta-IN',
-      Telugu: 'te-IN',
-      Malayalam: 'ml-IN',
-      Kannada: 'kn-IN',
-      Bengali: 'bn-IN',
-    };
-    recognition.lang = langMap[language] ?? 'en-IN';
-    recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => setIsRecording(false);
-    recognition.onerror = () => setIsRecording(false);
-    recognition.onresult = (e) => {
-      const transcript = e.results[0][0].transcript;
-      setInput(transcript);
-      sendMessage(transcript);
-    };
-    recognition.start();
-  }, [isRecording, language, sendMessage]);
-
+  // -- Read the latest verdict aloud ----------------------------------------
   const readLatest = useCallback(() => {
     if (latestAssessment?.explanation?.plain_language_text) {
       speech.play(latestAssessment.explanation.plain_language_text);
     }
   }, [latestAssessment, speech]);
+
+  // Auto-scroll chat on new message
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(animFrameRef.current);
+      try {
+        audioContextRef.current?.close();
+      } catch {}
+      try {
+        mediaRecorderRef.current?.stop();
+      } catch {}
+    };
+  }, []);
 
   return (
     <>
@@ -178,11 +343,19 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-cyan-500 to-blue-700 hover:from-cyan-400 hover:to-blue-600 text-white px-4 py-3 shadow-[0_0_28px_-2px_rgba(34,211,238,0.6)] border border-cyan-300/40 transition active:scale-95"
+        className={`fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-full px-4 py-3 shadow-[0_0_28px_-2px_rgba(34,211,238,0.7)] border border-cyan-300/50 transition active:scale-95 text-white font-bold text-xs uppercase tracking-wider ${
+          recorderState === 'recording'
+            ? 'bg-red-600 animate-pulse border-red-300'
+            : 'bg-gradient-to-br from-cyan-500 to-blue-700 hover:from-cyan-400 hover:to-blue-600'
+        }`}
         aria-label="Open ORCA voice assistant"
       >
-        <AudioLines className="w-4 h-4" />
-        <span className="text-xs font-bold uppercase tracking-wider">Voice</span>
+        {recorderState === 'recording' ? (
+          <Radio className="w-4 h-4" />
+        ) : (
+          <AudioLines className="w-4 h-4" />
+        )}
+        <span>{recorderState === 'recording' ? 'Listening' : 'Voice'}</span>
       </button>
 
       {open && (
@@ -192,7 +365,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           aria-label="ORCA voice assistant"
         >
           <div
-            className="absolute inset-0 bg-ocean-1000/70 backdrop-blur-sm pointer-events-auto"
+            className="absolute inset-0 bg-ocean-1000/75 backdrop-blur-sm pointer-events-auto"
             onClick={() => setOpen(false)}
           />
           <div className="relative w-full max-w-md h-[80vh] sm:h-[640px] glass-strong rounded-2xl flex flex-col overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 pointer-events-auto">
@@ -203,7 +376,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
               <div className="flex-1 leading-tight">
                 <p className="text-sm font-bold text-white">Ask ORCA · Voice-first</p>
                 <p className="text-[10px] uppercase tracking-wider text-ink-muted font-bold">
-                  {language} · {latestAssessment?.telemetry.execution_ms?.toFixed(0) ?? '—'} ms
+                  {language} · {sttEngine} · {latestAssessment?.telemetry.execution_ms?.toFixed(0) ?? '—'} ms
                 </p>
               </div>
               <button
@@ -228,7 +401,8 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
                     Ask me anything about your trip
                   </p>
                   <p className="text-[11px] text-ink-muted">
-                    Speak or type in {language}. I&apos;ll query the ocean models and answer out loud.
+                    Tap the mic and speak in {language}, or type below. The
+                    server also runs offline Whisper for noisy radio chatter.
                   </p>
                 </div>
               )}
@@ -261,12 +435,12 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
                   </div>
                 </div>
               ))}
-              {isLoading && (
+              {(isLoading || recorderState === 'processing') && (
                 <div className="flex items-center gap-2 text-xs text-ink-muted px-2">
                   <span className="w-1.5 h-3 bg-cyan-400 voice-bar rounded-sm" />
                   <span className="w-1.5 h-4 bg-cyan-300 voice-bar rounded-sm" style={{ animationDelay: '120ms' }} />
                   <span className="w-1.5 h-2.5 bg-cyan-500 voice-bar rounded-sm" style={{ animationDelay: '240ms' }} />
-                  <span>ORCA reasoning engine is querying the ocean…</span>
+                  <span>ORCA is querying the ocean models…</span>
                 </div>
               )}
             </div>
@@ -286,19 +460,45 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
               ))}
             </div>
 
-            {/* Voice recording strip */}
-            {isRecording && (
-              <div className="px-3 py-2 bg-red-950/40 border-t border-red-700/40 flex items-center justify-between text-[11px] text-red-200">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-                  <span className="font-bold uppercase tracking-wider">Listening · {language}</span>
+            {/* Live audio level meter while recording */}
+            {recorderState === 'recording' && (
+              <div className="px-3 py-2 bg-red-950/40 border-t border-red-700/40">
+                <div className="flex items-center justify-between text-[11px] text-red-200 mb-1.5">
+                  <span className="flex items-center gap-2 font-bold uppercase tracking-wider">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                    Recording · {language}
+                  </span>
+                  <span className="text-[10px] text-red-300/80">
+                    tap mic to stop & transcribe
+                  </span>
                 </div>
-                <div className="flex items-end gap-0.5 h-5">
-                  <div className="w-1 h-3 bg-red-400 voice-bar rounded-sm" />
-                  <div className="w-1 h-5 bg-red-300 voice-bar rounded-sm" style={{ animationDelay: '100ms' }} />
-                  <div className="w-1 h-2.5 bg-red-500 voice-bar rounded-sm" style={{ animationDelay: '200ms' }} />
-                  <div className="w-1 h-4 bg-red-400 voice-bar rounded-sm" style={{ animationDelay: '300ms' }} />
+                <div className="flex items-end gap-0.5 h-7">
+                  {Array.from({ length: 28 }).map((_, i) => {
+                    const lit = audioLevel * 28 > i;
+                    const height = 30 + Math.abs(Math.sin(i * 0.6) * 70);
+                    return (
+                      <span
+                        key={i}
+                        className={`w-1 rounded-sm transition-colors ${
+                          lit
+                            ? i > 22
+                              ? 'bg-red-400'
+                              : i > 14
+                                ? 'bg-amber-400'
+                                : 'bg-emerald-400'
+                            : 'bg-ocean-1000/60'
+                        }`}
+                        style={{ height: `${height}%` }}
+                      />
+                    );
+                  })}
                 </div>
+              </div>
+            )}
+            {recorderState === 'error' && (
+              <div className="px-3 py-1.5 bg-amber-950/50 border-t border-amber-700/40 flex items-center gap-2 text-[11px] text-amber-200">
+                <AlertCircle className="w-3.5 h-3.5" />
+                Recording failed. Type your query below or check microphone permissions.
               </div>
             )}
 
@@ -314,13 +514,22 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
                 type="button"
                 onClick={toggleRecording}
                 className={`shrink-0 w-11 h-11 rounded-xl border flex items-center justify-center transition ${
-                  isRecording
+                  recorderState === 'recording'
                     ? 'bg-red-600 border-red-400 text-white animate-pulse'
                     : 'bg-cyan-950 hover:bg-cyan-900 border-cyan-700 text-cyan-300'
                 }`}
-                aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
+                aria-label={
+                  recorderState === 'recording'
+                    ? 'Stop recording & transcribe'
+                    : 'Start voice input'
+                }
+                disabled={isLoading}
               >
-                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                {recorderState === 'recording' ? (
+                  <MicOff className="w-5 h-5" />
+                ) : (
+                  <Mic className="w-5 h-5" />
+                )}
               </button>
               <input
                 value={input}

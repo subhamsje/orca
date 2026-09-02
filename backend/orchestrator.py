@@ -21,9 +21,6 @@ import asyncio
 import time
 from typing import Dict, Any
 
-from services.ocean_service import ocean_service
-from services.weather_service import weather_service
-from services.wave_service import wave_service
 from services.alerts_service import alerts_service
 from services.pfz_service import pfz_service
 from services.safety_service import safety_service
@@ -37,6 +34,7 @@ from services.event_bus import agent_event_bus, AgentMessage
 from services.world_model_service import world_model_service
 from services.optimization_engine_service import optimization_engine
 from database.repository import db_repository
+from data_providers.orchestrator import build_canonical_report
 
 class MultiAgentOrchestrator:
     async def execute_pipeline(
@@ -49,18 +47,17 @@ class MultiAgentOrchestrator:
     ) -> Dict[str, Any]:
         t0 = time.time()
 
-        # Step 1: Parallel async environmental data ingestion
-        ocean_res, weather_res, wave_res, alerts_res = await asyncio.gather(
-            ocean_service.fetch_ocean_metrics(lat, lon),
-            weather_service.fetch_weather_metrics(lat, lon),
-            wave_service.fetch_wave_metrics(lat, lon),
-            alerts_service.check_active_alerts(lat, lon)
+        # Step 1: Multi-source canonical environmental data acquisition
+        # (MET Norway + Open-Meteo Marine + Open-Meteo ECMWF + NDBC buoys + StormGlass)
+        canonical, alerts_res = await asyncio.gather(
+            build_canonical_report(lat, lon),
+            alerts_service.check_active_alerts(lat, lon),
         )
 
-        # Step 2: Maritime World Model Assembly
+        # Step 2: Maritime World Model Assembly (canonical, no fallbacks)
         world_model = world_model_service.assemble_world_model(
             lat=lat, lon=lon, vessel_length_m=vessel_length_m,
-            ocean_metrics=ocean_res, weather_metrics=weather_res, wave_metrics=wave_res
+            canonical=canonical,
         )
 
         await agent_event_bus.publish(AgentMessage(
@@ -69,10 +66,13 @@ class MultiAgentOrchestrator:
             payload=world_model
         ))
 
-        # Step 3: Safety Circuit Breaker & Hydrodynamics Evaluation
+        # Step 3: Safety Circuit Breaker — needs weather & wave metrics.
+        # We synthesise the legacy dict shape from the canonical records.
+        legacy_weather = _canonical_to_legacy_weather(canonical)
+        legacy_wave = _canonical_to_legacy_wave(canonical)
         vessel_profile = {"length_m": vessel_length_m, "beam_m": 2.2}
         safety_res = safety_service.evaluate_safety_and_circuit_breaker(
-            weather_res, wave_res, alerts_res, vessel_length_m, vessel_profile
+            legacy_weather, legacy_wave, alerts_res, vessel_length_m, vessel_profile
         )
 
         await agent_event_bus.publish(AgentMessage(
@@ -83,7 +83,8 @@ class MultiAgentOrchestrator:
         ))
 
         # Step 4: Multi-Species Habitat Suitability Index (HSI) Matrix
-        pfz_res = await pfz_service.compute_habitat_suitability(ocean_res, lat, lon)
+        legacy_ocean = _canonical_to_legacy_ocean(canonical)
+        pfz_res = await pfz_service.compute_habitat_suitability(legacy_ocean, lat, lon)
 
         await agent_event_bus.publish(AgentMessage(
             sender="PFZAgent",
@@ -119,7 +120,7 @@ class MultiAgentOrchestrator:
 
         # Step 9: Natural Language Synthesizer (NLG Voice)
         nlg_res = nlg_service.synthesize_explanation(
-            safety_res, pfz_res, weather_res, wave_res, route_res, language
+            safety_res, pfz_res, legacy_weather, legacy_wave, route_res, language
         )
 
         # Step 10: Persistent SQLite Audit Log Storage
@@ -142,6 +143,17 @@ class MultiAgentOrchestrator:
             "circuit_breaker_triggered": safety_res["override_active"],
             "override_reason": safety_res.get("override_reason"),
             "world_model": world_model,
+            "canonical_records": {
+                p: _canonical_to_dict(r) for p, r in canonical.items()
+            },
+            "canonical_data_unavailable": [
+                p for p in [
+                    "sea_surface_temperature", "wave_height", "wind_speed", "wind_gust",
+                    "wind_direction", "air_pressure", "air_temperature", "visibility",
+                    "cloud_cover", "current_speed", "swell_wave_height", "salinity",
+                ]
+                if p not in canonical or canonical[p].value is None
+            ],
             "pfz_grounds": pfz_res["top_grounds"],
             "species_matrix": pfz_res["species_matrix"],
             "route": route_res,
@@ -155,8 +167,124 @@ class MultiAgentOrchestrator:
             "inter_agent_event_bus": agent_event_bus.get_event_history(limit=10),
             "telemetry": {
                 "execution_ms": round(dt_ms, 2),
-                "services_triggered": ["world_model", "ocean", "weather", "wave", "alerts", "pfz", "safety", "gis", "multi_objective_optimization", "pathfinding", "economics", "collision", "osint", "event_bus", "db_persistence", "nlg"]
+                "services_triggered": ["world_model_canonical", "met_norway", "open_meteo_marine", "open_meteo_ecmwf", "ndbc_buoy", "stormglass", "incois", "alerts", "pfz", "safety", "gis", "multi_objective_optimization", "pathfinding", "economics", "collision", "osint", "event_bus", "db_persistence", "nlg"]
             }
         }
+
+
+def _canonical_to_dict(rec) -> dict:
+    """Serialize a CanonicalRecord for the API response."""
+    return {
+        "value": rec.value,
+        "unit": rec.unit,
+        "source": rec.source,
+        "source_id": rec.source_id,
+        "dataset": rec.dataset,
+        "data_type": rec.data_type,
+        "state": rec.state,
+        "observation_time": rec.observation_time,
+        "valid_time": rec.valid_time,
+        "retrieved_at": rec.retrieved_at,
+        "spatial_resolution": rec.spatial_resolution,
+        "temporal_resolution": rec.temporal_resolution,
+        "distance_from_requested_km": rec.distance_from_requested_km,
+        "quality": rec.quality,
+        "confidence": rec.confidence,
+        "notes": rec.notes,
+    }
+
+
+def _canonical_to_legacy_weather(canonical) -> dict:
+    """Translate canonical records into the legacy weather dict expected by
+    safety_service, pfz_service, nlg_service, etc."""
+    out: dict = {"data_freshness": "Live"}
+    rec = canonical.get("wind_speed")
+    if rec and rec.value is not None:
+        out["wind_speed_kmh"] = rec.value * 3.6 if rec.unit == "m/s" else rec.value
+    rec = canonical.get("wind_gust")
+    if rec and rec.value is not None:
+        out["wind_gust_kmh"] = rec.value * 3.6 if rec.unit == "m/s" else rec.value
+    rec = canonical.get("wind_direction")
+    if rec and rec.value is not None:
+        out["wind_direction_deg"] = rec.value
+        out["wind_direction"] = rec.unit or _card(rec.value)
+    rec = canonical.get("air_pressure")
+    if rec and rec.value is not None:
+        out["air_pressure_hpa"] = rec.value
+    rec = canonical.get("air_temperature")
+    if rec and rec.value is not None:
+        out["air_temperature_c"] = rec.value
+    rec = canonical.get("visibility")
+    if rec and rec.value is not None:
+        out["visibility_km"] = rec.value
+    rec = canonical.get("cloud_cover")
+    if rec and rec.value is not None:
+        out["cloud_cover_pct"] = rec.value
+    rec = canonical.get("precipitation")
+    if rec and rec.value is not None:
+        out["precipitation_mm"] = rec.value
+    return out
+
+
+def _canonical_to_legacy_wave(canonical) -> dict:
+    rec = canonical.get("wave_height")
+    if rec and rec.value is not None:
+        out = {"significant_wave_height_m": rec.value}
+    else:
+        out = {}
+    rec = canonical.get("wave_period")
+    if rec and rec.value is not None:
+        out["swell_period_sec"] = rec.value
+    rec = canonical.get("swell_wave_height")
+    if rec and rec.value is not None:
+        out["swell_wave_height_m"] = rec.value
+    rec = canonical.get("swell_wave_period")
+    if rec and rec.value is not None:
+        out["swell_wave_period_s"] = rec.value
+    rec = canonical.get("swell_wave_direction")
+    if rec and rec.value is not None:
+        out["swell_wave_direction_deg"] = rec.value
+    rec = canonical.get("wave_direction")
+    if rec and rec.value is not None:
+        out["wave_direction_deg"] = rec.value
+    out["data_freshness"] = "Live"
+    if "significant_wave_height_m" in out and "swell_period_sec" in out:
+        out["wave_steepness"] = round(
+            out["significant_wave_height_m"] / max(1.0, out["swell_period_sec"]), 3
+        )
+    return out
+
+
+def _canonical_to_legacy_ocean(canonical) -> dict:
+    out: dict = {}
+    rec = canonical.get("sea_surface_temperature")
+    if rec and rec.value is not None:
+        out["sea_surface_temp_c"] = rec.value
+        out["sst_c"] = rec.value
+    rec = canonical.get("chlorophyll")
+    if rec and rec.value is not None:
+        out["chlorophyll_mg_m3"] = rec.value
+    rec = canonical.get("current_speed")
+    if rec and rec.value is not None:
+        # m/s -> knots if backend uses knots
+        out["current_velocity_knots"] = rec.value * 1.94384
+        out["ocean_current_velocity"] = rec.value
+    rec = canonical.get("current_direction")
+    if rec and rec.value is not None:
+        out["current_dir_deg"] = rec.value
+        out["ocean_current_direction"] = rec.value
+    rec = canonical.get("salinity")
+    if rec and rec.value is not None:
+        out["salinity_psu"] = rec.value
+    return out
+
+
+def _card(deg):
+    if deg is None:
+        return ""
+    dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+            "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    return dirs[int(deg % 360 / 22.5) % 16]
+
 
 orchestrator = MultiAgentOrchestrator()
