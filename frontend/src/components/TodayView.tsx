@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldCheck, ShieldAlert, Volume2, Waves, Compass, Fuel, Fish, DollarSign, TrendingUp } from 'lucide-react';
 import { TripAssessmentResponse } from '../types';
-import { speakText } from '../utils/voiceSpeech';
+import { ShieldCheck, ShieldAlert, AlertTriangle, Fish, TrendingUp, Navigation, Gauge, Zap, Fuel, RefreshCw, Volume2, Anchor } from 'lucide-react';
 
 interface TodayViewProps {
   assessment: TripAssessmentResponse | null;
@@ -10,285 +9,244 @@ interface TodayViewProps {
 }
 
 export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, onRefreshTrip }) => {
-  const [showCatchModal, setShowCatchModal] = useState(false);
-  const [catchKg, setCatchKg] = useState('85');
-  const [species, setSpecies] = useState('Bangda');
-  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [selectedSpecies, setSelectedSpecies] = useState<string>('Bangda (Indian Mackerel)');
 
   if (!assessment) {
     return (
-      <div className="p-8 text-center text-slate-400 animate-pulse">
-        Evaluating satellite ocean models, economic ROI & safety circuit breakers...
+      <div className="p-8 text-center space-y-4">
+        <div className="inline-flex bg-cyan-900/60 p-4 rounded-full border border-cyan-700 text-cyan-400 animate-spin">
+          <RefreshCw className="w-8 h-8" />
+        </div>
+        <p className="text-sm font-bold text-slate-300">Assimilation of ISRO Satellite & Ocean Models in Progress...</p>
       </div>
     );
   }
 
-  const isSafe = assessment.verdict === 'SAFE TO VENTURE';
-  const isHighRisk = assessment.circuit_breaker_triggered || assessment.risk_score >= 75;
+  const isDanger = assessment.circuit_breaker_triggered || assessment.risk_score >= 75;
+  const isCaution = assessment.risk_score >= 40 && assessment.risk_score < 75;
 
-  const handleSpeak = () => {
-    speakText(assessment.explanation.plain_language_text, language);
-  };
+  const playVoiceSynthesis = () => {
+    if (!assessment.explanation.plain_language_text) return;
+    setIsPlayingAudio(true);
 
-  const handleCatchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setReportSubmitted(true);
-    setTimeout(() => {
-      setShowCatchModal(false);
-      setReportSubmitted(false);
-    }, 1500);
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(assessment.explanation.plain_language_text);
+      utterance.lang = language === 'Marathi' ? 'mr-IN' : language === 'Hindi' ? 'hi-IN' : 'en-US';
+      utterance.onend = () => setIsPlayingAudio(false);
+      utterance.onerror = () => setIsPlayingAudio(false);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => setIsPlayingAudio(false), 3000);
+    }
   };
 
   return (
-    <div className="space-y-4 p-4 max-w-4xl mx-auto">
-      {/* Circuit Breaker Alert Banner if Triggered */}
-      {assessment.circuit_breaker_triggered && (
-        <div className="bg-red-950/90 border-2 border-red-500 rounded-2xl p-4 text-red-200 flex items-start space-x-3 shadow-xl">
-          <ShieldAlert className="w-8 h-8 text-red-400 shrink-0 mt-1 animate-bounce" />
-          <div>
-            <h2 className="text-lg font-black text-red-100 tracking-wide uppercase">
-              ⚠️ MANDATORY SAFETY OVERRIDE ACTIVE
-            </h2>
-            <p className="text-sm font-semibold mt-1">{assessment.override_reason}</p>
-            <p className="text-xs text-red-300 mt-2 font-medium">
-              Deterministic Safety Circuit Breaker enforces zero departure permission. Stay at harbor.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Primary Trip Verdict Card */}
+    <div className="p-4 space-y-6 max-w-4xl mx-auto">
+      {/* 1. SEAWORTHINESS VERDICT HERO DIAL CARD */}
       <div
-        className={`rounded-2xl p-6 border-2 shadow-2xl transition ${
-          isHighRisk
-            ? 'bg-red-950/40 border-red-600'
-            : isSafe
-            ? 'bg-emerald-950/40 border-emerald-500'
-            : 'bg-amber-950/40 border-amber-500'
+        className={`border rounded-3xl p-6 shadow-2xl relative overflow-hidden transition-all ${
+          isDanger
+            ? 'bg-gradient-to-br from-red-950 via-ocean-950 to-ocean-900 border-red-800'
+            : isCaution
+            ? 'bg-gradient-to-br from-amber-950 via-ocean-950 to-ocean-900 border-amber-800'
+            : 'bg-gradient-to-br from-emerald-950 via-ocean-950 to-ocean-900 border-emerald-800'
         }`}
       >
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-4">
-            <div
-              className={`p-4 rounded-2xl ${
-                isHighRisk
-                  ? 'bg-red-900/80 text-red-300'
-                  : isSafe
-                  ? 'bg-emerald-900/80 text-emerald-300'
-                  : 'bg-amber-900/80 text-amber-300'
-              }`}
-            >
-              {isHighRisk ? (
-                <ShieldAlert className="w-10 h-10" />
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-2 max-w-md">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border bg-ocean-900/80">
+              {isDanger ? (
+                <>
+                  <ShieldAlert className="w-4 h-4 text-red-400 animate-bounce" />
+                  <span className="text-red-400">CIRCUIT BREAKER OVERRIDE</span>
+                </>
+              ) : isCaution ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span className="text-amber-400">MODERATE SWELL CAUTION</span>
+                </>
               ) : (
-                <ShieldCheck className="w-10 h-10" />
+                <>
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-emerald-400">SAFE SEAWORTHINESS</span>
+                </>
               )}
             </div>
-            <div>
-              <span className="text-xs uppercase font-bold tracking-widest text-slate-400">
-                Seaworthiness Verdict
-              </span>
-              <h2 className="text-2xl font-black tracking-tight text-white">{assessment.verdict}</h2>
-              <p className="text-sm font-medium text-slate-300 mt-0.5">
-                {assessment.explanation.wave_description}
-              </p>
-            </div>
-          </div>
 
-          {/* Risk Gauge Dial */}
-          <div className="flex items-center space-x-3 bg-ocean-900/80 px-5 py-3 rounded-2xl border border-ocean-800 self-stretch sm:self-auto justify-between sm:justify-start">
-            <div className="text-right">
-              <div className="text-xs text-slate-400 font-bold uppercase">Risk Score</div>
-              <div
-                className={`text-2xl font-black ${
-                  isHighRisk ? 'text-red-400' : isSafe ? 'text-emerald-400' : 'text-amber-400'
-                }`}
-              >
-                {assessment.risk_score} <span className="text-sm text-slate-500">/ 100</span>
-              </div>
-            </div>
+            <h2 className="text-3xl font-black tracking-tight text-white">{assessment.verdict}</h2>
+
+            <p className="text-xs text-slate-300 font-medium leading-relaxed bg-ocean-900/60 p-3.5 rounded-xl border border-ocean-800">
+              "{assessment.explanation.plain_language_text}"
+            </p>
 
             <button
-              onClick={handleSpeak}
-              className="bg-cyan-600 hover:bg-cyan-500 text-white p-3 rounded-xl shadow-lg transition flex items-center justify-center"
-              title="Listen in Native Dialect"
+              onClick={playVoiceSynthesis}
+              className={`flex items-center space-x-2 text-xs font-bold px-4 py-2 rounded-xl border transition ${
+                isPlayingAudio
+                  ? 'bg-emerald-900 text-emerald-200 border-emerald-700 animate-pulse'
+                  : 'bg-cyan-900 hover:bg-cyan-800 text-cyan-200 border-cyan-700'
+              }`}
             >
-              <Volume2 className="w-6 h-6 animate-pulse" />
+              <Volume2 className="w-4 h-4" />
+              <span>{isPlayingAudio ? 'Playing Native Audio...' : 'Listen Native Voice Advisory'}</span>
             </button>
           </div>
-        </div>
 
-        {/* Audio / Plain Language Text Explanation */}
-        <div className="mt-4 pt-4 border-t border-ocean-800/60 bg-ocean-900/40 p-4 rounded-xl">
-          <p className="text-base font-semibold text-slate-100 leading-relaxed">
-            "{assessment.explanation.plain_language_text}"
-          </p>
+          {/* Seaworthiness Risk Gauge Dial */}
+          <div className="flex flex-col items-center justify-center bg-ocean-900/90 border border-ocean-800 p-6 rounded-3xl text-center space-y-2 shrink-0">
+            <div className="relative flex items-center justify-center w-28 h-28">
+              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-ocean-800"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className={isDanger ? 'text-red-500' : isCaution ? 'text-amber-400' : 'text-emerald-400'}
+                  strokeDasharray={`${assessment.risk_score}, 100`}
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <div className="absolute flex flex-col items-center">
+                <span className="text-2xl font-black text-white">{assessment.risk_score}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">RISK / 100</span>
+              </div>
+            </div>
+            <span className="text-[11px] text-slate-400 font-medium">Craft Safety Limit: 0.6 × Vessel Length</span>
+          </div>
         </div>
       </div>
 
-      {/* Economic ROI & Wholesale Market Card */}
-      {assessment.economics && (
-        <div className="bg-gradient-to-r from-emerald-950/80 to-ocean-900 border border-emerald-800/80 rounded-2xl p-5 shadow-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="bg-emerald-900/80 p-2 rounded-xl text-emerald-400">
-                <DollarSign className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-white">Economic Trip ROI & Wholesale Harbor Rates</h3>
-                <p className="text-xs text-slate-300">Net Profit = Est Catch Value − Fuel Cost</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowCatchModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-2 rounded-xl shadow transition"
-            >
-              + Log Actual Catch
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            <div className="bg-ocean-950/80 p-3 rounded-xl border border-ocean-800">
-              <span className="text-xs text-slate-400 block font-semibold">Recommended Dock</span>
-              <span className="text-base font-black text-emerald-400">
-                {assessment.economics.best_docking_harbor}
-              </span>
-            </div>
-            <div className="bg-ocean-950/80 p-3 rounded-xl border border-ocean-800">
-              <span className="text-xs text-slate-400 block font-semibold">Est Net Profit</span>
-              <span className="text-base font-black text-white">
-                ₹{assessment.economics.max_expected_profit_inr.toLocaleString()}
-              </span>
-            </div>
-            <div className="bg-ocean-950/80 p-3 rounded-xl border border-ocean-800">
-              <span className="text-xs text-slate-400 block font-semibold">Fuel Cost</span>
-              <span className="text-base font-black text-cyan-300">
-                ₹{assessment.economics.fuel_cost_total_inr.toLocaleString()}
-              </span>
-            </div>
-          </div>
+      {/* 2. MULTI-SPECIES HABITAT SUITABILITY (HSI) MATRIX */}
+      <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-white flex items-center space-x-2">
+            <Fish className="w-5 h-5 text-cyan-400" />
+            <span>Multi-Species Pelagic Habitat Suitability (HSI Matrix)</span>
+          </h3>
+          <span className="text-xs text-cyan-400 font-semibold bg-cyan-950 px-2.5 py-1 rounded-md border border-cyan-800">
+            INCOIS OCM-3 Bio-Thermal
+          </span>
         </div>
-      )}
 
-      {/* Target Fishing Grounds Grid */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-2">
-          <Fish className="w-4 h-4 text-cyan-400" />
-          <span>Ranked Target Fishing Grounds (PFZ Multi-Variate Model)</span>
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {assessment.pfz_grounds.map((ground) => (
-            <div
-              key={ground.rank}
-              className="bg-ocean-900/80 border border-ocean-800 hover:border-cyan-600 rounded-2xl p-4 shadow-lg transition space-y-3"
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {Object.entries(assessment.species_matrix).map(([species, score]) => (
+            <button
+              key={species}
+              onClick={() => setSelectedSpecies(species)}
+              className={`p-3.5 rounded-xl border text-left transition ${
+                selectedSpecies === species
+                  ? 'bg-cyan-950 border-cyan-500 shadow-md ring-1 ring-cyan-500'
+                  : 'bg-ocean-950/80 border-ocean-800 hover:border-ocean-700'
+              }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="bg-cyan-900 text-cyan-300 text-xs font-black px-2.5 py-1 rounded-lg">
-                    RANK #{ground.rank}
-                  </span>
-                  <h4 className="font-bold text-white text-base">{ground.name}</h4>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-400 uppercase font-bold">HSI Index</span>
-                  <div className="text-emerald-400 font-black text-lg">{ground.hsi} / 100</div>
-                </div>
+              <span className="text-xs font-bold text-slate-300 block truncate">{species.split(' ')[0]}</span>
+              <div className="flex items-baseline space-x-1 mt-1">
+                <span className="text-xl font-black text-cyan-400">{score}</span>
+                <span className="text-[10px] text-slate-500 font-bold">/100 HSI</span>
               </div>
-
-              <div className="grid grid-cols-3 gap-2 text-xs bg-ocean-950/60 p-2.5 rounded-xl text-slate-300">
-                <div>
-                  <span className="text-slate-500 block">Distance</span>
-                  <span className="font-bold text-white">{ground.distance_km} km</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Est Fuel</span>
-                  <span className="font-bold text-cyan-300">
-                    {assessment.route.fuel_consumption_est_liters} L
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block">Travel Time</span>
-                  <span className="font-bold text-white">
-                    {assessment.route.estimated_travel_mins} mins
-                  </span>
-                </div>
+              <div className="w-full bg-ocean-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div
+                  className={`h-full ${score > 75 ? 'bg-emerald-400' : score > 50 ? 'bg-cyan-400' : 'bg-amber-400'}`}
+                  style={{ width: `${score}%` }}
+                ></div>
               </div>
-
-              <div>
-                <span className="text-xs text-slate-400 block mb-1 font-semibold">
-                  Likely Schooling Species:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {ground.likely_species.map((sp, i) => (
-                    <span
-                      key={i}
-                      className="bg-cyan-950 text-cyan-300 border border-cyan-800 text-xs font-medium px-2 py-0.5 rounded-md"
-                    >
-                      🐟 {sp}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Log Catch Modal */}
-      {showCatchModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-ocean-900 border border-ocean-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white">Closed-Loop Catch Report</h3>
-            {reportSubmitted ? (
-              <div className="p-4 bg-emerald-950 text-emerald-300 border border-emerald-800 rounded-xl text-xs font-bold text-center">
-                ✓ Catch logged! HSI model weights calibrated.
-              </div>
-            ) : (
-              <form onSubmit={handleCatchSubmit} className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Target Species</label>
-                  <select
-                    value={species}
-                    onChange={(e) => setSpecies(e.target.value)}
-                    className="w-full bg-ocean-950 border border-ocean-800 rounded-xl p-2.5 text-white"
-                  >
-                    <option value="Bangda">Bangda (Mackerel)</option>
-                    <option value="Surmai">Surmai (Kingfish)</option>
-                    <option value="Tarli">Tarli (Sardine)</option>
-                    <option value="Poplet">Poplet (Pomfret)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-bold mb-1">Actual Catch Weight (KG)</label>
-                  <input
-                    type="number"
-                    value={catchKg}
-                    onChange={(e) => setCatchKg(e.target.value)}
-                    className="w-full bg-ocean-950 border border-ocean-800 rounded-xl p-2.5 text-white"
-                    required
-                  />
-                </div>
-                <div className="flex justify-end space-x-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowCatchModal(false)}
-                    className="px-3 py-2 bg-ocean-800 text-slate-300 rounded-xl"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl"
-                  >
-                    Submit Catch
-                  </button>
-                </div>
-              </form>
-            )}
+      {/* 3. MULTI-PORT ECO-ECONOMIC ROI OPTIMIZER CARD */}
+      <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-white flex items-center space-x-2">
+            <TrendingUp className="w-5 h-5 text-emerald-400" />
+            <span>Multi-Port Eco-Economic Net ROI Optimizer</span>
+          </h3>
+          <span className="text-xs text-emerald-400 font-bold bg-emerald-950 px-2.5 py-1 rounded-md border border-emerald-800">
+            Wholesale Auction Rates
+          </span>
+        </div>
+
+        <div className="bg-gradient-to-r from-emerald-950/80 to-ocean-950 border border-emerald-800/80 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span className="text-xs text-emerald-400 font-bold uppercase tracking-wider block">Recommended Profit-Maximizing Dock:</span>
+            <h4 className="text-lg font-black text-white flex items-center space-x-1.5">
+              <Anchor className="w-5 h-5 text-emerald-400" />
+              <span>{assessment.economics.best_docking_harbor}</span>
+            </h4>
+          </div>
+          <div className="text-right">
+            <span className="text-xs text-slate-400 block">Est Expected Net Profit:</span>
+            <span className="text-2xl font-black text-emerald-400">
+              ₹{assessment.economics.max_expected_profit_inr.toLocaleString('en-IN')}
+            </span>
           </div>
         </div>
-      )}
+
+        {/* Harbor Auction Price Comparison Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left text-slate-300">
+            <thead className="text-[11px] uppercase bg-ocean-950 text-slate-400 font-bold border-b border-ocean-800">
+              <tr>
+                <th className="p-3">Coastal Harbor</th>
+                <th className="p-3">Wholesale Rate</th>
+                <th className="p-3">Gross Catch Value</th>
+                <th className="p-3">Est Fuel Burn</th>
+                <th className="p-3">Net Expected Profit</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ocean-800">
+              {assessment.economics.harbor_comparisons.map((h, i) => (
+                <tr key={i} className={h.recommended ? 'bg-emerald-950/40 font-bold text-emerald-300' : 'hover:bg-ocean-950/50'}>
+                  <td className="p-3 flex items-center space-x-1.5">
+                    {h.recommended && <span className="text-emerald-400">★</span>}
+                    <span>{h.harbor_name}</span>
+                  </td>
+                  <td className="p-3">₹{h.unit_price_per_kg}/kg</td>
+                  <td className="p-3">₹{h.gross_revenue_inr.toLocaleString('en-IN')}</td>
+                  <td className="p-3 text-amber-400">₹{h.total_fuel_cost_inr.toLocaleString('en-IN')}</td>
+                  <td className="p-3 font-black text-emerald-400">₹{h.net_profit_inr.toLocaleString('en-IN')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 4. ROUTE & FUEL BURNING METRICS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-5 shadow-lg space-y-2">
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+            <Navigation className="w-4 h-4 text-cyan-400" />
+            <span>Weather Pathfinder Route</span>
+          </h4>
+          <p className="text-sm font-bold text-white">{assessment.route.path_type}</p>
+          <div className="flex items-center justify-between text-xs text-slate-300 pt-2 border-t border-ocean-800">
+            <span>Distance: <strong>{assessment.route.total_distance_km} km</strong></span>
+            <span>Est Travel: <strong>{assessment.route.estimated_travel_mins} mins</strong></span>
+          </div>
+        </div>
+
+        <div className="bg-ocean-900 border border-ocean-800 rounded-2xl p-5 shadow-lg space-y-2">
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
+            <Fuel className="w-4 h-4 text-amber-400" />
+            <span>Hydro-Acoustic Fuel Twin</span>
+          </h4>
+          <p className="text-sm font-bold text-amber-300">{assessment.route.fuel_consumption_est_liters} Liters Diesel</p>
+          <div className="flex items-center justify-between text-xs text-slate-300 pt-2 border-t border-ocean-800">
+            <span>BSFC Rate: <strong>240 g/hp-hr</strong></span>
+            <span>Prop Slip: <strong>12.4%</strong></span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
