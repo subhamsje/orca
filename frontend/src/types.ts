@@ -29,6 +29,7 @@ export interface HarborComparison {
   net_profit_inr: number;
   unit_price_per_kg: number;
   extra_distance_km: number;
+  recommended?: boolean;
 }
 
 export interface EconomicResult {
@@ -60,8 +61,9 @@ export interface TripAssessmentResponse {
   circuit_breaker_triggered: boolean;
   override_reason?: string;
   pfz_grounds: PFZGround[];
+  species_matrix: Record<string, number>;
   route: RouteResult;
-  economics?: EconomicResult;
+  economics: EconomicResult;
   geofence_status: {
     dist_to_imbl_km: number;
     inside_imbl_buffer_warning: boolean;

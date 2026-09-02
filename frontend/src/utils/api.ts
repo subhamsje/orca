@@ -31,7 +31,6 @@ export async function fetchTripAssessment(
     return await response.json();
   } catch (error) {
     console.warn('API call failed, serving fallback offline response:', error);
-    // Offline fallback data structure
     return {
       coordinate: { lat, lon },
       vessel_length_m: vesselLengthM,
@@ -49,6 +48,12 @@ export async function fetchTripAssessment(
           coordinates: [lat + 0.08, lon - 0.12],
         },
       ],
+      species_matrix: {
+        'Bangda (Indian Mackerel)': 88,
+        'Surmai (Kingfish / Seer Fish)': 88,
+        'Tarli (Indian Oil Sardine)': 68,
+        'Poplet (Pomfret)': 72,
+      },
       route: {
         path_type: 'A* Offline Path',
         total_distance_km: 14.2,
@@ -59,6 +64,33 @@ export async function fetchTripAssessment(
         ],
         avoided_hazards: ['Naval Buffer Zone'],
         fuel_consumption_est_liters: 6.4,
+      },
+      economics: {
+        best_docking_harbor: 'Mirkarwada Harbor (Ratnagiri)',
+        max_expected_profit_inr: 15379.1,
+        estimated_catch_kg: 85.0,
+        target_species: 'Bangda',
+        fuel_cost_total_inr: 630.4,
+        harbor_comparisons: [
+          {
+            harbor_name: 'Mirkarwada Harbor (Ratnagiri)',
+            gross_revenue_inr: 18275.0,
+            total_fuel_cost_inr: 2895.9,
+            net_profit_inr: 15379.1,
+            unit_price_per_kg: 215,
+            extra_distance_km: 98.6,
+            recommended: true,
+          },
+          {
+            harbor_name: 'Malvan Port (Chivla/Dandi)',
+            gross_revenue_inr: 15300.0,
+            total_fuel_cost_inr: 906.2,
+            net_profit_inr: 14393.8,
+            unit_price_per_kg: 180,
+            extra_distance_km: 12.0,
+            recommended: false,
+          },
+        ],
       },
       geofence_status: {
         dist_to_imbl_km: 24.5,
