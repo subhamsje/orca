@@ -22,6 +22,7 @@ from services.offline_sync_service import offline_sync_service
 from services.insurance_service import insurance_service
 from services.economic_service import economic_service
 from services.osint_service import osint_service
+from services.satellite_pass_service import satellite_pass_service
 from utils.nmea_parser import parse_nmea_sentence
 from utils.engine_twin import calculate_detailed_engine_metrics
 from utils.packet_encoder import pack_telemetry, unpack_telemetry
@@ -176,6 +177,10 @@ async def get_osint_summary():
 @app.post("/api/v1/osint/correlate")
 async def correlate_osint(req: OsintCorrelateRequest):
     return osint_service.correlate_sector_intelligence(lat=req.latitude, lon=req.longitude, radius_km=req.radius_km)
+
+@app.get("/api/v1/satellite/passes")
+async def get_satellite_passes(lat: float = 16.0215, lon: float = 73.4821):
+    return satellite_pass_service.predict_upcoming_passes(sector_lat=lat, sector_lon=lon)
 
 @app.post("/api/v1/sar-drift")
 async def simulate_sar(req: SARDriftRequest):
