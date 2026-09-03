@@ -13,6 +13,7 @@ import {
   OceanVitals,
   OsintPanel,
   ProvenanceSourcePanel,
+  RiskBreakdownPanel,
   SpeciesMatrixPanel,
   TopBar,
   VerdictHero,
@@ -21,7 +22,7 @@ import {
   VoiceAssistant,
 } from './ui/orca';
 import { TripAssessmentResponse, VesselProfile, verdictTone } from './types';
-import { fetchTripAssessment } from './utils/api';
+import { fetchTripAssessment, fetchAssessNow } from './utils/api';
 import { GLOBAL_HARBORS, HarborLocation } from './utils/harbors';
 
 function useMacLike(): boolean {
@@ -63,7 +64,19 @@ export function App() {
     async (lat: number, lon: number) => {
       setIsLoadingAssessment(true);
       try {
-        const data = await fetchTripAssessment(lat, lon, vesselProfile.length_m, language);
+        // Use the production risk-engine endpoint so the UI shows the
+        // full per-hazard breakdown, circuit-breaker hits, and a
+        // reconciliation line. The risk engine's response is
+        // flattened into the same TripAssessmentResponse shape so the
+        // existing UI cards (VerdictHero, OceanVitals,
+        // RiskBreakdownPanel) all consume it without changes.
+        const data = await fetchAssessNow(
+          lat,
+          lon,
+          vesselProfile.length_m,
+          language,
+          vesselProfile.heading_deg,
+        );
         setAssessment(data);
       } catch (err) {
         console.error(err);
@@ -152,12 +165,12 @@ export function App() {
 
   const handleVoiceQuery = useCallback(
     async (text: string): Promise<TripAssessmentResponse> => {
-      const data = await fetchTripAssessment(
+      const data = await fetchAssessNow(
         selectedHarbor.lat,
         selectedHarbor.lon,
         vesselProfile.length_m,
         language,
-        text,
+        vesselProfile.heading_deg,
       );
       setAssessment(data);
       return data;
@@ -225,6 +238,9 @@ export function App() {
             isLoading={isLoadingAssessment}
             onRefresh={handleRefresh}
           />
+        </div>
+        <div className="pointer-events-auto">
+          <RiskBreakdownPanel risk={assessment?.risk ?? null} />
         </div>
         <div className="pointer-events-auto">
           <OceanVitals assessment={assessment} />

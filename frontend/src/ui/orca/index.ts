@@ -1,4 +1,5 @@
 export { VerdictHero } from './VerdictHero';
+export { RiskBreakdownPanel } from './RiskBreakdownPanel';
 export { OceanVitals } from './OceanVitals';
 export { MultiObjectiveRoutePicker } from './MultiObjectiveRoutePicker';
 export { InterAgentStream } from './InterAgentStream';

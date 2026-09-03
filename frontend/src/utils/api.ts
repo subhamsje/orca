@@ -164,3 +164,175 @@ export async function fetchSatellitePasses(signal?: AbortSignal) {
     return null;
   }
 }
+
+/**
+ * Call the production maritime risk engine endpoint /api/v1/assess-now.
+ *
+ * Returns a flattened TripAssessmentResponse that the existing UI
+ * cards (VerdictHero, OceanVitals, RiskBreakdownPanel) can consume
+ * without changes. The /assess-now response includes the full
+ * per-hazard breakdown, circuit-breaker hits, data freshness,
+ * vessel profile, and the risk equation.
+ */
+export async function fetchAssessNow(
+  lat: number,
+  lon: number,
+  vesselLengthM: number,
+  language: string,
+  vesselHeadingDeg: number = 0.0,
+  signal?: AbortSignal,
+): Promise<TripAssessmentResponse> {
+  const r = await fetch(`${API_BASE_URL}/api/v1/assess-now`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    body: JSON.stringify({
+      latitude: lat,
+      longitude: lon,
+      vessel_length_m: vesselLengthM,
+      vessel_heading_deg: vesselHeadingDeg,
+      language,
+    }),
+  });
+  if (!r.ok) {
+    throw new AssessmentError(`HTTP ${r.status}`, r.status);
+  }
+  const data = await r.json();
+  return _adapt_assess_now_to_legacy(data, lat, lon, vesselLengthM, language);
+}
+
+function _adapt_assess_now_to_legacy(
+  data: any,
+  lat: number,
+  lon: number,
+  vesselLengthM: number,
+  language: string,
+): TripAssessmentResponse {
+  const r = data.risk ?? {};
+  const state = data.environmental_state ?? {};
+  const canonical: Record<string, any> = {};
+  const oceanState: Record<string, any> = {};
+  for (const [k, v] of Object.entries(state.variables ?? {})) {
+    const entry = v as any;
+    canonical[k] = {
+      value: entry.value,
+      unit: entry.unit,
+      source: entry.source,
+      source_id: entry.source_id,
+      dataset: entry.dataset,
+      data_type: entry.data_type,
+      state: entry.state,
+      observation_time: entry.observed_at,
+      valid_time: entry.observed_at,
+      retrieved_at: entry.observed_at,
+      spatial_resolution: '',
+      temporal_resolution: '',
+      distance_from_requested_km: entry.distance_km,
+      quality: entry.quality,
+      confidence: entry.confidence,
+      notes: '',
+    };
+    oceanState[k] = entry.value;
+  }
+  return {
+    coordinate: data.requested_coordinate ?? { lat, lon },
+    vessel_length_m: vesselLengthM,
+    language,
+    verdict: r.risk_label ?? 'UNKNOWN',
+    risk_score: r.risk_score ?? 0,
+    risk: r,
+    risk_equation: r.risk_equation,
+    risk_label: r.risk_label,
+    circuit_breaker_triggered: r.circuit_breaker?.triggered ?? false,
+    override_reason: r.circuit_breaker?.hits?.[0]?.rule_description ?? null,
+    world_model: {
+      coordinate: data.requested_coordinate ?? { lat, lon },
+      h3_index_res7: '',
+      vessel_twin: data.vessel_profile,
+      ocean_state: oceanState as any,
+      risk_state: {} as any,
+      provenance: {
+        id: data.assessment_id ?? '',
+        timestamp: data.timestamp_utc ?? 0,
+        source: Object.values(canonical).map((c: any) => c.source).filter(Boolean).join(' + ') || 'NO SOURCES',
+        generated_at: new Date((data.timestamp_utc ?? 0) * 1000).toISOString(),
+        valid_until: new Date((data.timestamp_utc ?? 0) * 1000).toISOString(),
+        data_freshness: r.data_quality_score >= 0.7 ? 'LIVE' : 'PARTIAL',
+        model_version: r.calculation_version ?? 'ORCA-MRSI-v1.0.0',
+        confidence: r.data_confidence ?? 0,
+        uncertainty: r.risk_uncertainty ?? 0,
+        spatial_reference: 'EPSG:4326',
+        status: (r.unavailable_parameters?.length ?? 0) > 4 ? 'PARTIAL' : 'VALID',
+        is_simulated: false,
+      },
+    },
+    pfz_grounds: [],
+    species_matrix: {},
+    route: {
+      path_type: 'A*',
+      total_distance_km: 0,
+      estimated_travel_mins: 0,
+      waypoints: [],
+      avoided_hazards: [],
+      fuel_consumption_est_liters: 0,
+    },
+    economics: {
+      best_docking_harbor: '—',
+      max_expected_profit_inr: 0,
+      estimated_catch_kg: 0,
+      target_species: '—',
+      fuel_cost_total_inr: 0,
+      harbor_comparisons: [],
+    },
+    geofence_status: data.geofence ?? {
+      is_plausible: true,
+      dist_to_imbl_km: null,
+      nearest_imbl_name: null,
+      dist_to_naval_zone_km: null,
+      inside_imbl_buffer_warning: false,
+      inside_naval_zone_violation: false,
+      turn_back_bearing_deg: 0,
+      restricted_zones_nearby: [],
+    },
+    explanation: {
+      plain_language_text: '',
+      wave_description: '',
+      language,
+      voice_code: 'en-US',
+      provenance_summary: {
+        satellites: [],
+        ocean_models: Object.values(canonical).map((c: any) => c.source).filter(Boolean),
+        data_freshness: r.data_quality_score >= 0.7 ? 'live' : 'partial',
+        confidence_score: r.data_confidence ?? 0,
+        audit_hash: data.assessment_id ?? '',
+      },
+    },
+    provenance: {
+      id: data.assessment_id ?? '',
+      timestamp: data.timestamp_utc ?? 0,
+      source: Object.values(canonical).map((c: any) => c.source).filter(Boolean).join(' + ') || 'NO SOURCES',
+      generated_at: new Date((data.timestamp_utc ?? 0) * 1000).toISOString(),
+      valid_until: new Date((data.timestamp_utc ?? 0) * 1000).toISOString(),
+      data_freshness: r.data_quality_score >= 0.7 ? 'LIVE' : 'PARTIAL',
+      model_version: r.calculation_version ?? 'ORCA-MRSI-v1.0.0',
+      confidence: r.data_confidence ?? 0,
+      uncertainty: r.risk_uncertainty ?? 0,
+      spatial_reference: 'EPSG:4326',
+      status: (r.unavailable_parameters?.length ?? 0) > 4 ? 'PARTIAL' : 'VALID',
+      is_simulated: false,
+    },
+    canonical_records: canonical,
+    canonical_data_unavailable: r.unavailable_parameters ?? [],
+    telemetry: {
+      execution_ms: data.execution_ms ?? 0,
+      services_triggered: [
+        'risk_engine',
+        'met_norway',
+        'open_meteo_marine',
+        'open_meteo_ecmwf',
+        'ndbc_buoy',
+        'stormglass',
+      ],
+    },
+  };
+}
