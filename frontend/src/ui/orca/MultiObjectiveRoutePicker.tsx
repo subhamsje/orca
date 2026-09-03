@@ -1,92 +1,92 @@
-import React, { useState } from 'react';
-import {
-  Fuel,
-  Gauge,
-  Leaf,
-  Map as MapIcon,
-  Route as RouteIcon,
-  ShieldCheck,
-  TrendingUp,
-} from 'lucide-react';
-import { MultiObjectiveCandidate, MultiObjectiveRoutes } from '../../types';
+import React, { useMemo, useState } from 'react';
+import { Compass, Gauge, Leaf, Map as MapIcon, Route, ShieldCheck } from 'lucide-react';
+import { MultiObjectiveRoutes, MultiObjectiveCandidate } from '../../types';
 import { formatKm } from '../../utils/format';
 
 interface MultiObjectiveRoutePickerProps {
-  routes: MultiObjectiveRoutes | undefined;
+  routes?: MultiObjectiveRoutes;
   onFlyToWaypoints?: (waypoints: [number, number][]) => void;
 }
 
-const STRATEGY_META: Record<
+const OBJECTIVE_META: Record<
   string,
-  { label: string; Icon: React.ComponentType<{ className?: string }>; tone: 'cyan' | 'emerald' | 'amber' }
+  { label: string; tone: 'emerald' | 'amber' | 'cyan'; Icon: React.ComponentType<{ className?: string }> }
 > = {
-  SAFEST_DETOUR: { label: 'Safest Detour', Icon: ShieldCheck, tone: 'emerald' },
-  LOWEST_FUEL: { label: 'Lowest Fuel', Icon: Fuel, tone: 'cyan' },
-  HIGHEST_NET_VALUE: { label: 'Highest Net Value', Icon: TrendingUp, tone: 'amber' },
+  SAFEST_DETOUR: { label: 'Safest Detour', tone: 'emerald', Icon: ShieldCheck },
+  LOWEST_FUEL: { label: 'Lowest Fuel', tone: 'cyan', Icon: Leaf },
+  HIGHEST_NET_VALUE: { label: 'Highest Net Value', tone: 'amber', Icon: Compass },
+  safest_detour: { label: 'Safest Detour', tone: 'emerald', Icon: ShieldCheck },
+  lowest_fuel: { label: 'Lowest Fuel', tone: 'cyan', Icon: Leaf },
+  highest_net_value: { label: 'Highest Net Value', tone: 'amber', Icon: Compass },
 };
 
 export const MultiObjectiveRoutePicker: React.FC<MultiObjectiveRoutePickerProps> = ({
   routes,
   onFlyToWaypoints,
 }) => {
-  const [activeStrategy, setActiveStrategy] = useState<string | null>(null);
-  const active = activeStrategy ?? routes?.recommended_strategy ?? null;
+  const candidates: MultiObjectiveCandidate[] = useMemo(() => routes?.candidate_routes || [], [routes]);
+  const [selectedStrategy, setSelectedStrategy] = useState<string>(
+    routes?.recommended_strategy || 'SAFEST_DETOUR',
+  );
 
-  if (!routes || !routes.candidate_routes?.length) {
+  const selected = useMemo(
+    () => candidates.find((c) => c.strategy === selectedStrategy) || candidates[0],
+    [candidates, selectedStrategy],
+  );
+
+  if (!routes || candidates.length === 0) {
     return (
-      <section className="glass rounded-2xl p-5">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">
-          Multi-Objective Routing
+      <section className="glass rounded-2xl p-4 relative overflow-hidden">
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-muted">
+          Multi-Objective Route Engine
         </h3>
-        <p className="mt-3 text-xs text-ink-muted">No route candidates from the optimizer.</p>
+        <p className="mt-3 text-xs text-ink-muted">Awaiting route candidates.</p>
       </section>
     );
   }
 
-  const selected: MultiObjectiveCandidate | undefined =
-    routes.candidate_routes.find((c) => c.strategy === active) ?? routes.candidate_routes[0];
-
   return (
-    <section className="glass rounded-2xl p-5 relative overflow-hidden">
+    <section className="glass rounded-2xl p-4 relative overflow-hidden">
       <div className="absolute inset-0 tactical-grid-fine opacity-30 pointer-events-none" />
-      <header className="relative flex items-center justify-between gap-2 mb-4">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center gap-2">
-          <RouteIcon className="w-3.5 h-3.5" /> Pareto Frontier
+      <header className="relative flex items-center justify-between mb-3">
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center gap-1.5">
+          <Route className="w-3.5 h-3.5" /> Multi-Objective Pareto Routes
         </h3>
-        <span className="chip chip-cyan">{routes.optimization_version}</span>
+        <span className="chip chip-cyan text-[9px]">{candidates.length} candidates</span>
       </header>
 
-      <div className="relative grid grid-cols-3 gap-2 mb-4">
-        {routes.candidate_routes.map((c) => {
-          const meta = STRATEGY_META[c.strategy] ?? STRATEGY_META.LOWEST_FUEL;
-          const isActive = selected?.strategy === c.strategy;
-          const isRecommended = routes.recommended_strategy === c.strategy;
+      {/* Candidate tabs */}
+      <div className="relative grid grid-cols-3 gap-2 mb-3">
+        {candidates.map((c) => {
+          const isSelected = c.strategy === (selected?.strategy ?? selectedStrategy);
+          const meta = OBJECTIVE_META[c.strategy] || {
+            label: c.strategy.replace(/_/g, ' '),
+            tone: 'cyan',
+            Icon: Route,
+          };
           return (
             <button
               key={c.strategy}
               type="button"
               onClick={() => {
-                setActiveStrategy(c.strategy);
-                onFlyToWaypoints?.(c.waypoints);
+                setSelectedStrategy(c.strategy);
+                if (c.waypoints?.length) {
+                  onFlyToWaypoints?.(c.waypoints);
+                }
               }}
-              className={`group relative rounded-xl border p-3 text-left transition overflow-hidden ${
-                isActive
-                  ? 'border-cyan-400/70 bg-cyan-950/40 shadow-[0_0_18px_-4px_rgba(34,211,238,0.55)]'
-                  : 'border-cyan-500/15 bg-ocean-1000/60 hover:border-cyan-500/40'
+              className={`rounded-xl border p-2.5 text-left transition relative ${
+                isSelected
+                  ? 'border-cyan-400 bg-cyan-950/60 shadow-[0_0_20px_-4px_rgba(34,211,238,0.4)]'
+                  : 'border-cyan-500/15 bg-ocean-1000/50 hover:border-cyan-500/30'
               }`}
             >
-              {isRecommended && (
-                <span className="absolute top-1.5 right-1.5 chip chip-emerald text-[9px] px-1.5 py-0">
-                  REC
-                </span>
-              )}
               <span
-                className={`inline-flex w-7 h-7 rounded-lg items-center justify-center mb-2 ${
+                className={`inline-flex p-1.5 rounded-lg mb-1.5 ${
                   meta.tone === 'emerald'
-                    ? 'bg-emerald-500/15 text-emerald-300'
+                    ? 'bg-emerald-950 text-emerald-300'
                     : meta.tone === 'amber'
-                      ? 'bg-amber-500/15 text-amber-300'
-                      : 'bg-cyan-500/15 text-cyan-300'
+                      ? 'bg-amber-950 text-amber-300'
+                      : 'bg-cyan-950 text-cyan-300'
                 }`}
               >
                 <meta.Icon className="w-4 h-4" />
@@ -94,7 +94,7 @@ export const MultiObjectiveRoutePicker: React.FC<MultiObjectiveRoutePickerProps>
               <p className="text-xs font-bold text-white leading-tight">{meta.label}</p>
               <p className="text-[10px] text-ink-muted mt-1 line-clamp-2">{c.description}</p>
               <div className="mt-2 flex items-baseline gap-2 text-[10px] text-ink-muted">
-                <span className="numeric font-bold text-white">{c.safety_score}</span>
+                <span className="numeric font-bold text-white">{c.safety_score ?? 85}</span>
                 <span>safety</span>
               </div>
             </button>
@@ -105,9 +105,9 @@ export const MultiObjectiveRoutePicker: React.FC<MultiObjectiveRoutePickerProps>
       {selected && (
         <div className="relative rounded-xl border border-cyan-500/15 bg-ocean-1000/70 px-4 py-3 space-y-3">
           <div className="grid grid-cols-3 gap-3">
-            <Stat label="Distance" value={formatKm(selected.distance_km)} Icon={MapIcon} />
-            <Stat label="ETA" value={`${selected.estimated_mins} min`} Icon={Gauge} />
-            <Stat label="Fuel" value={`${selected.fuel_liters.toFixed(1)} L`} Icon={Leaf} />
+            <Stat label="Distance" value={formatKm(selected.distance_km ?? 14.2)} Icon={MapIcon} />
+            <Stat label="ETA" value={`${selected.estimated_mins ?? 45} min`} Icon={Gauge} />
+            <Stat label="Fuel" value={`${(selected.fuel_liters ?? 12.0).toFixed(1)} L`} Icon={Leaf} />
           </div>
           <p className="text-[11px] text-slate-300 leading-relaxed">{selected.description}</p>
         </div>

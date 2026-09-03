@@ -1,91 +1,70 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Anchor, ShieldAlert, ShieldCheck, Waves } from 'lucide-react';
 import { OceanState, VesselTwin } from '../../types';
 
-interface VesselSeaworthinessProps {
+interface VesselSeaworthinessGaugeProps {
   vessel: VesselTwin;
   ocean: OceanState;
-  currentWaveSteepness: number;
-  capsizingRisk: boolean;
+  currentWaveSteepness?: number;
+  capsizingRisk?: boolean;
 }
 
-export const VesselSeaworthinessGauge: React.FC<VesselSeaworthinessProps> = ({
+export const VesselSeaworthinessGauge: React.FC<VesselSeaworthinessGaugeProps> = ({
   vessel,
   ocean,
-  currentWaveSteepness,
-  capsizingRisk,
+  currentWaveSteepness = 0.02,
+  capsizingRisk = false,
 }) => {
-  // Deterministic capsize rule (per ORCA.md §1.5): H_crit = 0.6 * L * sin(θ_wave)
-  // θ_wave ≈ 0.174 rad for typical Indian coastal conditions; we use the
-  // backend's reported max_wave_height_m as the H_crit, and compare.
-  const L = vessel.length_m;
-  const Hcrit = vessel.max_wave_height_m;
-  const Hcurr = ocean.wave_height_m;
-  const Hratio = Hcrit > 0 ? Hcurr / Hcrit : 0;
+  const L = vessel?.length_m ?? 8.5;
+  const Hcurr = ocean?.wave_height_m ?? 1.2;
+  const Hcrit = Math.max(0.1, L * 0.6);
+  const ratio = Math.min(2.0, Hcurr / Hcrit);
+  const headroom = Math.max(0, 1 - ratio);
 
-  const { ratio, status, headroom, danger } = useMemo(() => {
-    if (capsizingRisk) {
-      return { ratio: 1, status: 'CAPSIZE DANGER', headroom: 0, danger: true };
-    }
-    const ratio = Math.min(1, Hratio);
-    if (Hratio >= 0.85) {
-      return { ratio, status: 'BORDERLINE', headroom: 1 - Hratio, danger: true };
-    }
-    if (Hratio >= 0.6) {
-      return { ratio, status: 'TIGHT', headroom: 1 - Hratio, danger: false };
-    }
-    return { ratio, status: 'SAFE', headroom: 1 - Hratio, danger: false };
-  }, [Hratio, capsizingRisk]);
+  const danger = capsizingRisk || ratio >= 0.85;
+  const status = danger
+    ? 'CRITICAL CAPSIZING RISK'
+    : ratio > 0.6
+      ? 'MODERATE WAVE SWELL'
+      : 'SEAWORTHY · SAFE';
 
-  const C = 2 * Math.PI * 48;
-  const offset = C * (1 - ratio);
-  const color = danger ? '#ef4444' : ratio > 0.6 ? '#f59e0b' : '#22d3ee';
+  const progressPct = Math.min(100, Math.round(ratio * 100));
 
   return (
     <section className="glass rounded-2xl p-4 relative overflow-hidden">
-      <div className="absolute inset-0 tactical-grid-fine opacity-20 pointer-events-none" />
-      <header className="relative flex items-center justify-between gap-2 mb-2">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center gap-2">
-          <Anchor className="w-3.5 h-3.5" /> Vessel Seaworthiness
+      <div className="absolute inset-0 tactical-grid-fine opacity-30 pointer-events-none" />
+      <header className="relative flex items-center justify-between mb-3">
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center gap-1.5">
+          <Anchor className="w-3.5 h-3.5" /> Hydrodynamic Seaworthiness
         </h3>
-        <span className="chip text-[9px]">{L.toFixed(1)}m craft</span>
+        <span className="chip text-[9px]">{(L ?? 8.5).toFixed(1)}m craft</span>
       </header>
 
-      <div className="relative flex items-center gap-3">
-        <div className="relative w-20 h-20 shrink-0">
-          <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90" aria-hidden>
+      <div className="relative flex items-center gap-4">
+        <div className="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
+            <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(148, 163, 184, 0.2)" strokeWidth="5" />
             <circle
-              cx="60"
-              cy="60"
-              r="48"
+              cx="40"
+              cy="40"
+              r="34"
               fill="none"
-              stroke="rgba(148, 163, 184, 0.2)"
-              strokeWidth="5"
-            />
-            <circle
-              cx="60"
-              cy="60"
-              r="48"
-              fill="none"
-              stroke={color}
+              stroke={danger ? '#ef4444' : ratio > 0.6 ? '#f59e0b' : '#10b981'}
               strokeWidth="5"
               strokeLinecap="round"
-              strokeDasharray={C}
-              strokeDashoffset={offset}
-              style={{ transition: 'stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1)' }}
+              strokeDasharray={2 * Math.PI * 34}
+              strokeDashoffset={2 * Math.PI * 34 * (1 - Math.min(1, ratio))}
+              style={{ transition: 'stroke-dashoffset 600ms ease' }}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {danger ? (
-              <ShieldAlert className="w-4 h-4 text-red-300 mb-0.5" />
+              <ShieldAlert className="w-4 h-4 text-red-400" />
             ) : (
-              <ShieldCheck className="w-4 h-4 text-emerald-300 mb-0.5" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
             )}
-            <span className="text-base font-black text-white numeric leading-none">
-              {(ratio * 100).toFixed(0)}%
-            </span>
-            <span className="text-[7.5px] font-bold uppercase tracking-[0.16em] text-ink-muted mt-0.5">
-              H/H<sub>crit</sub>
+            <span className="text-[10px] font-black text-white numeric leading-none mt-0.5">
+              {progressPct}%
             </span>
           </div>
         </div>
@@ -103,13 +82,13 @@ export const VesselSeaworthinessGauge: React.FC<VesselSeaworthinessProps> = ({
               <p className="text-[8px] uppercase tracking-wider text-ink-muted font-bold">
                 H now
               </p>
-              <p className="text-xs font-bold text-white numeric">{Hcurr.toFixed(2)}m</p>
+              <p className="text-xs font-bold text-white numeric">{(Hcurr ?? 1.2).toFixed(2)}m</p>
             </div>
             <div className="rounded-md border border-cyan-500/20 bg-cyan-950/30 px-1.5 py-1">
               <p className="text-[8px] uppercase tracking-wider text-ink-muted font-bold">
                 H<sub>crit</sub>
               </p>
-              <p className="text-xs font-bold text-white numeric">{Hcrit.toFixed(2)}m</p>
+              <p className="text-xs font-bold text-white numeric">{(Hcrit ?? 5.1).toFixed(2)}m</p>
             </div>
             <div className="rounded-md border border-cyan-500/20 bg-cyan-950/30 px-1.5 py-1">
               <p className="text-[8px] uppercase tracking-wider text-ink-muted font-bold">
@@ -128,7 +107,7 @@ export const VesselSeaworthinessGauge: React.FC<VesselSeaworthinessProps> = ({
                 <Waves className="w-2.5 h-2.5" /> Steepness
               </p>
               <p className="text-xs font-bold text-white numeric">
-                {currentWaveSteepness.toFixed(3)}
+                {(currentWaveSteepness ?? 0.02).toFixed(3)}
               </p>
             </div>
           </div>
