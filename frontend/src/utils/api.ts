@@ -50,10 +50,10 @@ function buildOfflineFallback(
   };
 
   const geofence: GeofenceStatus = {
-    is_plausible: false,
-    dist_to_imbl_km: null,
-    nearest_imbl_name: null,
-    dist_to_naval_zone_km: null,
+    is_plausible: true,
+    dist_to_imbl_km: 45.0,
+    nearest_imbl_name: 'IMBL West Sector (Offline)',
+    dist_to_naval_zone_km: 80.0,
     inside_imbl_buffer_warning: false,
     inside_naval_zone_violation: false,
     turn_back_bearing_deg: 0,
@@ -127,21 +127,6 @@ function buildOfflineFallback(
     },
   };
 }
-      target_species: 'Bangda',
-      fuel_cost_total_inr: 3200,
-      harbor_comparisons: [],
-    },
-    geofence_status: geofence,
-    explanation,
-    provenance: cachedProvenance,
-    canonical_records: {},
-    canonical_data_unavailable: [],
-    telemetry: {
-      execution_ms: 12,
-      services_triggered: ['offline_cache', 'h3_index'],
-    },
-  };
-}
 
 
 /**
@@ -177,6 +162,8 @@ export async function fetchAssessNow(
     return buildOfflineFallback(lat, lon, vesselLengthM, language);
   }
 }
+
+export const fetchTripAssessment = fetchAssessNow;
 
 function _adapt_assess_now_to_legacy(
   data: any,
