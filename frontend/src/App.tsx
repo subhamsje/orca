@@ -53,6 +53,7 @@ export function App() {
     length_m: 8.5,
     engine_hp: 9.9,
     fuel_capacity_l: 60,
+    heading_deg: 270,
   });
 
   const [language, setLanguage] = useState('English');
