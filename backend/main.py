@@ -8,6 +8,10 @@ import os
 import base64
 import io
 import wave
+# Importing risk_engine triggers registration of all data providers
+# (MET Norway, Open-Meteo Marine, Open-Meteo ECMWF, NDBC buoys, StormGlass)
+# and exposes the canonical / vessel / hazards / engine / pipeline APIs.
+import risk_engine  # noqa: F401
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -186,6 +190,89 @@ async def assess_trip(req: TripAssessmentRequest):
         language=req.language,
         query_text=req.query_text
     )
+
+
+class AssessNowRequest(BaseModel):
+    latitude: float = Field(..., example=8.0840)
+    longitude: float = Field(..., example=77.5505)
+    vessel_length_m: float = Field(8.5, example=8.5)
+    vessel_heading_deg: float = Field(0.0, example=0.0)
+    language: str = Field("English", example="English")
+    waypoints: Optional[List[List[float]]] = Field(
+        None, example=[[8.084, 77.5505], [8.20, 77.20], [8.35, 76.90]]
+    )
+    speed_kn: float = Field(8.0, example=8.0)
+    query_text: Optional[str] = Field(None, example="Is it safe to go tomorrow?")
+
+
+@app.post("/api/v1/assess-now")
+async def assess_now(req: AssessNowRequest):
+    """Production maritime risk engine endpoint.
+
+    Runs the full ORCA pipeline:
+      1. Multi-source canonical data acquisition
+      2. Per-variable freshness classification
+      3. Geospatial normalization
+      4. Deterministic safety circuit breaker
+      5. Continuous ORCA Maritime Safety Risk Index (0-100)
+      6. Optional route risk
+      7. Replay-store snapshot
+
+    The response includes the per-hazard contribution breakdown that
+    reconciles to the final score.
+    """
+    from risk_engine import assess_now as _assess_now
+
+    wps = None
+    if req.waypoints and len(req.waypoints) >= 2:
+        wps = [(float(p[0]), float(p[1])) for p in req.waypoints]
+    result = await _assess_now(
+        latitude=req.latitude,
+        longitude=req.longitude,
+        vessel_length_m=req.vessel_length_m,
+        vessel_heading_deg=req.vessel_heading_deg,
+        language=req.language,
+        waypoints=wps,
+        speed_kn=req.speed_kn,
+        query_text=req.query_text,
+    )
+    return result
+
+
+@app.get("/api/v1/assessments/{assessment_id}")
+async def get_assessment(assessment_id: str):
+    """Replay an assessment by its deterministic id.
+
+    Returns the immutable input snapshot (canonical records, vessel
+    profile, alerts, geofence) and the final RiskResult. The calculation
+    is reproducible: feeding the same inputs through the engine
+    produces the same score.
+    """
+    from risk_engine import replay as _replay
+
+    snap = _replay(assessment_id)
+    if not snap:
+        raise HTTPException(status_code=404, detail="assessment not found")
+    return snap
+
+
+@app.get("/api/v1/assessments")
+async def list_assessments(limit: int = 20):
+    """Most recent assessments (in-memory LRU; oldest evicted first)."""
+    from risk_engine import recent as _recent
+    return {"recent": _recent(limit=limit)}
+
+
+@app.get("/api/v1/providers/health")
+async def providers_health():
+    """Snapshot of every registered provider: calls, failures, circuit
+    breaker state, last error, credentials configured."""
+    from providers.base import list_providers as _lp
+
+    return {
+        "providers": _lp(),
+        "rate_limit_window_seconds": 60,
+    }
 
 @app.post("/api/v1/hardware/nmea")
 async def parse_nmea(req: NmeaParseRequest):
