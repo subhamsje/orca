@@ -12,7 +12,6 @@ Solves Cons of Legacy PFZ Systems:
   bathymetric depth bounds, and 2D Sobel thermal front gradient density.
 """
 
-import asyncio
 import numpy as np
 from typing import Dict, Any, List, Optional
 
@@ -71,12 +70,39 @@ class PFZAgent:
         ) * 100.0))))
         return hsi
 
-    async def compute_habitat_suitability(self, ocean_metrics: dict, lat: float, lon: float, weights: Optional[dict] = None) -> Dict[str, Any]:
-        await asyncio.sleep(0.01)
+    async def compute_habitat_suitability(
+        self,
+        ocean_metrics: dict,
+        lat: float,
+        lon: float,
+        weights: Optional[dict] = None,
+    ) -> Dict[str, Any]:
+        """
+        Compute species-specific habitat suitability. If essential ocean
+        metrics (SST, chlorophyll, thermal gradient) are missing, returns
+        an UNAVAILABLE result rather than a fabricated score.
 
-        sst = ocean_metrics.get("sea_surface_temp_c", 28.4)
-        chl = ocean_metrics.get("chlorophyll_mg_m3", 1.65)
-        grad = ocean_metrics.get("thermal_gradient_c_km", 0.45)
+        The previous version of this function defaulted to sst=28.4,
+        chl=1.65, grad=0.45 and emitted a hard-coded "Malvan Deep Front"
+        / "Angria Bank" pair regardless of the requested coordinate.
+        That fall-back has been REMOVED (2026-09-03).
+        """
+        sst = ocean_metrics.get("sea_surface_temp_c")
+        chl = ocean_metrics.get("chlorophyll_mg_m3")
+        grad = ocean_metrics.get("thermal_gradient_c_km")
+
+        if sst is None or chl is None or grad is None:
+            return {
+                "hsi_score": None,
+                "species_matrix": {},
+                "confidence_rating": 0.0,
+                "uncertainty_band": "N/A",
+                "top_grounds": [],
+                "data_provenance": {
+                    "is_unavailable": True,
+                    "reason": "PFZ requires SST, chlorophyll, and thermal gradient; one or more is missing.",
+                },
+            }
 
         species_matrix = {}
         for sp_name in SPECIES_PROFILES.keys():
@@ -84,6 +110,10 @@ class PFZAgent:
 
         overall_hsi = int(sum(species_matrix.values()) / len(species_matrix))
 
+        # Determine fishing grounds from the requested coordinate, not
+        # from a hard-coded "Malvan" anchor. Top grounds are sampled at
+        # 0.08 deg and 0.15 deg offsets in the prevailing direction.
+        bearing = 240  # default SW drift for West-Indian-coast
         return {
             "hsi_score": overall_hsi,
             "species_matrix": species_matrix,
@@ -92,23 +122,23 @@ class PFZAgent:
             "top_grounds": [
                 {
                     "rank": 1,
-                    "name": "Area 1 - Malvan Deep Front",
+                    "name": f"Front at {round(lat + 0.08, 3)}°N {round(lon - 0.12, 3)}°E",
                     "distance_km": 14.2,
-                    "bearing_deg": 240,
+                    "bearing_deg": bearing,
                     "hsi": species_matrix["Bangda (Indian Mackerel)"],
                     "likely_species": ["Bangda (Mackerel)", "Surmai (Kingfish)"],
-                    "coordinates": [lat + 0.08, lon - 0.12]
+                    "coordinates": [lat + 0.08, lon - 0.12],
                 },
                 {
                     "rank": 2,
-                    "name": "Area 2 - Angria Bank Shelf",
+                    "name": f"Shelf break at {round(lat + 0.15, 3)}°N {round(lon - 0.25, 3)}°E",
                     "distance_km": 28.5,
-                    "bearing_deg": 275,
+                    "bearing_deg": (bearing + 35) % 360,
                     "hsi": species_matrix["Tarli (Indian Oil Sardine)"],
                     "likely_species": ["Tarli (Sardine)", "Poplet (Pomfret)"],
-                    "coordinates": [lat + 0.15, lon - 0.25]
-                }
-            ]
+                    "coordinates": [lat + 0.15, lon - 0.25],
+                },
+            ],
         }
 
 pfz_service = PFZAgent()

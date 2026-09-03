@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 import time
 
 class ProvenanceMetadata(BaseModel):
+    model_config = {"protected_namespaces": ()}
     id: str = Field(..., example="PROV-994821")
     timestamp: float = Field(default_factory=time.time)
     source: str = Field(..., example="INSAT-3DR / Open-Meteo / WaveWatch III")
@@ -23,6 +24,7 @@ class ProvenanceMetadata(BaseModel):
     is_simulated: bool = Field(False)
 
 class VesselDigitalTwinState(BaseModel):
+    model_config = {"protected_namespaces": ()}
     vessel_id: str = Field("IND-MH-04-892")
     vessel_name: str = Field("Malvan Craft-01")
     vessel_type: str = Field("FISHING_CRAFT")

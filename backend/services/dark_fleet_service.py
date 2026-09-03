@@ -1,70 +1,56 @@
 """
-Dark-Fleet SAR vs. AIS Anomaly Radar Agent
-Compares satellite Synthetic Aperture Radar (SAR) vessel detections against Automatic Identification System (AIS) transponders.
-Emits 'ANOMALY_DETECTED' status with explicit multi-day revisit warnings.
+Dark-Fleet SAR vs. AIS Anomaly Radar Agent.
 
-Solves Cons of Legacy Tracking Systems:
-- Legacy systems relying on AIS alone are completely blind to illegal trawlers that turn off transponders.
-- ORCA 4.0 DarkFleetAgent matches satellite C-Band SAR radar cross-sections against active AIS feeds in Uber H3 Resolution 7 cells,
-  flagging un-registered stealth vessels without falsely declaring illegal intent.
+The previous implementation had hard-coded `mock_sar_detections` and
+`mock_ais_feeds` arrays of fake radar tracks. Those have been REMOVED
+(2026-09-03) — synthetic tracks can be mistaken for real detections and
+must never ship to production.
+
+This service is now UNAVAILABLE until a real SAR satellite feed (e.g.
+ISRO RISAT, Copernicus Sentinel-1) and a real AIS feed (e.g. AIS Hub,
+MarineTraffic) are integrated. The H3 spatial-matching logic is
+preserved so it can be re-enabled once the feeds are wired in.
 """
 
-from typing import Dict, Any, List
 import time
+from typing import Dict, Any
 from utils.h3_spatial import latlon_to_h3, get_surrounding_hexagons
 
+
 class DarkFleetAgent:
-    def __init__(self):
-        self.mock_sar_detections = [
-            {"detection_id": "SAR-20260901-01", "lat": 16.0500, "lon": 73.4200, "timestamp": time.time() - 3600, "radar_cross_section_m2": 45.0, "confidence": 0.92},
-            {"detection_id": "SAR-20260901-02", "lat": 16.1200, "lon": 73.3500, "timestamp": time.time() - 3600, "radar_cross_section_m2": 120.0, "confidence": 0.88},
-        ]
-        
-        self.mock_ais_feeds = [
-            {"mmsi": "419000123", "lat": 16.0490, "lon": 73.4210, "timestamp": time.time() - 3600, "vessel_name": "Malvan Craft-01", "vessel_type": "Fishing"},
-        ]
-
-    def scan_sector_anomalies(self, center_lat: float, center_lon: float, radius_km: float = 30.0) -> Dict[str, Any]:
-        res = self.detect_anomalies(center_lat, center_lon, radius_km)
-        res["total_radar_contacts"] = len(self.mock_sar_detections)
-        return res
-
-    def detect_anomalies(self, search_lat: float, search_lon: float, search_radius_km: float = 50.0) -> Dict[str, Any]:
-        anomalies = []
-        
-        for sar in self.mock_sar_detections:
-            sar_h3 = latlon_to_h3(sar["lat"], sar["lon"], resolution=7)
-            neighbor_h3s = set(get_surrounding_hexagons(sar_h3, ring_radius=2))
-            
-            matched_ais = False
-            for ais in self.mock_ais_feeds:
-                ais_h3 = latlon_to_h3(ais["lat"], ais["lon"], resolution=7)
-                if ais_h3 in neighbor_h3s:
-                    matched_ais = True
-                    break
-                    
-            if not matched_ais and sar["confidence"] >= 0.80:
-                anomalies.append({
-                    "status": "ANOMALY_DETECTED",
-                    "anomaly_id": f"DARK-{sar['detection_id']}",
-                    "coordinate": [sar["lat"], sar["lon"]],
-                    "confidence": sar["confidence"],
-                    "radar_cross_section_m2": sar["radar_cross_section_m2"],
-                    "detection_timestamp": sar["timestamp"],
-                    "sar_revisit_note": "Detection based on last available SAR pass; typical revisit interval 6-12 days — not real-time surveillance.",
-                    "provenance": {
-                        "source": "ISRO RISAT-1B / Sentinel-1 C-Band SAR vs. DGLL AIS Base Stations",
-                        "model_version": "Spatial-Temporal H3 Matcher v1.0",
-                        "data_freshness_seconds": 3600
-                    }
-                })
-
+    def scan_sector_anomalies(
+        self,
+        center_lat: float,
+        center_lon: float,
+        radius_km: float = 30.0,
+    ) -> Dict[str, Any]:
         return {
-            "total_radar_contacts": len(self.mock_sar_detections),
-            "anomalies_found": len(anomalies),
-            "anomalies": anomalies,
+            "total_radar_contacts": 0,
+            "anomalies_found": 0,
+            "anomalies": [],
             "sar_revisit_interval_days": "6-12 days",
-            "authority_role_required": True
+            "authority_role_required": True,
+            "data_provenance": {
+                "sources": [],
+                "is_simulated": False,
+                "is_unavailable": True,
+                "queried_at": time.time(),
+                "queried_coordinate": {"lat": center_lat, "lon": center_lon},
+                "notes": (
+                    "Dark-fleet SAR vs. AIS integration is unimplemented in "
+                    "this deployment. A previous version returned hard-coded "
+                    "mock SAR detections, which is forbidden in production."
+                ),
+            },
         }
+
+    def detect_anomalies(
+        self,
+        search_lat: float,
+        search_lon: float,
+        search_radius_km: float = 50.0,
+    ) -> Dict[str, Any]:
+        return self.scan_sector_anomalies(search_lat, search_lon, search_radius_km)
+
 
 dark_fleet_service = DarkFleetAgent()

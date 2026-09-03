@@ -94,7 +94,15 @@ class MultiAgentOrchestrator:
         ))
 
         # Step 5: Multi-Objective Routing Optimization (Safest, Lowest Fuel, Highest Value)
-        target_coords = pfz_res["top_grounds"][0]["coordinates"]
+        # If PFZ returned no grounds (data unavailable), fall back to a
+        # waypoint ~30 NM offshore for routing & path-finding — but we
+        # still emit a route that the safety circuit breaker can score
+        # even without fishing recommendations.
+        top_grounds = pfz_res.get("top_grounds") or []
+        if top_grounds:
+            target_coords = top_grounds[0]["coordinates"]
+        else:
+            target_coords = [lat + 0.30, lon - 0.45]  # ~30 NM SW
         multi_route_res = optimization_engine.solve_multi_objective_routes(
             origin_lat=lat, origin_lon=lon, target_lat=target_coords[0], target_lon=target_coords[1], vessel_length_m=vessel_length_m
         )
