@@ -1,6 +1,9 @@
 """
-ORCA 4.0 Data Orchestrator — multi-source fetch, normalize, freshness check,
-source selection, and canonical record aggregation.
+ORCA 4.0 Canonical Data Orchestrator (provider-abstraction edition).
+
+Runs every registered Provider in parallel through the new abstraction
+(`providers/base.py`), then applies per-parameter source selection
+(preferring observed > satellite > model, and lowest priority number).
 """
 
 from __future__ import annotations
@@ -16,51 +19,30 @@ from .canonical import (
     FRESHNESS_LIMITS,
     UNAVAILABLE,
     STALE,
+    OBSERVED,
+    NEAR_REAL_TIME,
+    NOWCAST,
+    FORECAST,
+    MODEL,
+    STALE,
 )
-from . import weather_providers
-from . import marine_providers
+from providers.base import PROVIDERS, Provider, list_providers
+import providers  # noqa: F401  (registers all providers on import)
+import providers.registry  # noqa: F401  (side-effect: register providers)
 
-log = logging.getLogger("orca.orchestrator")
-
-# --- Provider registry --------------------------------------------------------
-# Each provider exposes fetch(lat, lon) -> List[CanonicalRecord]. The
-# orchestrator runs all providers in parallel and selects the best record
-# per parameter.
-
-PROVIDERS = {
-    "weather": [
-        weather_providers.fetch_met_norway,
-        weather_providers.fetch_open_meteo_ecmwf,
-        weather_providers.fetch_open_meteo_forecast,
-    ],
-    "marine": [
-        marine_providers.fetch_open_meteo_marine,
-        marine_providers.fetch_ndbc_buoy,
-        marine_providers.fetch_stormglass,
-        marine_providers.fetch_incois,
-    ],
-}
+log = logging.getLogger("orca.canonical")
 
 
-async def collect_all(lat: float, lon: float) -> List[CanonicalRecord]:
-    """Run every provider in parallel. Return a flat list of records."""
-    tasks = []
-    for fn in PROVIDERS["weather"] + PROVIDERS["marine"]:
-        tasks.append(_safe(fn, lat, lon))
+async def collect_all(lat: float, lon: float, timestamp: Optional[float] = None) -> List[CanonicalRecord]:
+    """Run every registered provider in parallel. Each provider has its
+    own timeout, retry, circuit breaker, and rate limit."""
+    tasks = [p.safe_fetch(lat, lon, timestamp) for p in PROVIDERS.values()]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     out: List[CanonicalRecord] = []
     for r in results:
         if isinstance(r, list):
             out.extend(r)
     return out
-
-
-async def _safe(fn, lat: float, lon: float) -> List[CanonicalRecord]:
-    try:
-        return await fn(lat, lon)
-    except Exception as e:
-        log.debug(f"provider {fn.__name__} errored: {e}")
-        return []
 
 
 def _mark_stale(rec: CanonicalRecord) -> CanonicalRecord:
@@ -77,16 +59,6 @@ def select_best(
     records: List[CanonicalRecord],
     preferred_sources: Optional[List[str]] = None,
 ) -> Dict[str, CanonicalRecord]:
-    """
-    Pick the best CanonicalRecord for each parameter.
-
-    Selection policy:
-      1. Prefer preferred_sources (in order) if they produced a value.
-      2. Fall back to canonical SOURCE_PRIORITY for that parameter.
-      3. Among candidates, prefer observed > model, then nearest.
-      4. Drop records older than the freshness window (mark as STALE).
-      5. If nothing usable, return state=UNAVAILABLE.
-    """
     by_param: Dict[str, List[CanonicalRecord]] = {}
     for r in records:
         if r.value is None:
@@ -100,7 +72,7 @@ def select_best(
         if not candidates:
             continue
         order = preferred_sources or SOURCE_PRIORITY.get(param, [])
-        # Try preferred sources first
+
         for src in order:
             for c in candidates:
                 if c.source_id == src and c.state != STALE:
@@ -110,7 +82,6 @@ def select_best(
                 break
         if param in out:
             continue
-        # Fall back: best by source_id ordering
         for src in order:
             for c in candidates:
                 if c.source_id == src:
@@ -120,23 +91,14 @@ def select_best(
                 break
         if param in out:
             continue
-        # Last resort: first record
         out[param] = candidates[0]
     return out
 
 
-# --- Convenience: build a full canonical report -------------------------------
-
-async def build_canonical_report(lat: float, lon: float) -> Dict[str, CanonicalRecord]:
-    """End-to-end: fetch from every provider, return best record per parameter."""
-    all_records = await collect_all(lat, lon)
+async def build_canonical_report(
+    lat: float,
+    lon: float,
+    timestamp: Optional[float] = None,
+) -> Dict[str, CanonicalRecord]:
+    all_records = await collect_all(lat, lon, timestamp)
     return select_best(all_records)
-
-
-def is_data_unavailable() -> CanonicalRecord:
-    """Helper: a CanonicalRecord in UNAVAILABLE state with no value."""
-    return CanonicalRecord(
-        parameter="unknown",
-        state=UNAVAILABLE,
-        notes="No data returned by any provider",
-    )

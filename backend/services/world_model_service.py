@@ -10,6 +10,7 @@ and reports `state: UNAVAILABLE`.
 from typing import Dict, Any, Optional
 from domain.schemas import VesselDigitalTwinState, OceanState, RiskState, ProvenanceMetadata
 from utils.h3_spatial import latlon_to_h3, haversine_distance_km
+import data_providers  # noqa: F401  (triggers provider registration)
 from data_providers.canonical import (
     CanonicalRecord,
     UNAVAILABLE,
