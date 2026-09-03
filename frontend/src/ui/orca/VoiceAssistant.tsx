@@ -32,6 +32,8 @@ interface VoiceAssistantProps {
   language: string;
   lat: number;
   lon: number;
+  /** Display name for the harbor / coordinate currently in scope. */
+  locationLabel?: string;
   vesselLengthM: number;
   latestAssessment: TripAssessmentResponse | null;
   onQuerySubmit: (text: string) => Promise<TripAssessmentResponse>;
@@ -43,6 +45,17 @@ interface Message {
   text: string;
   timestamp: string;
   engine?: string;
+  /** Coordinates the answer was computed for. Helps the user track
+   *  conversation context across harbor switches. */
+  context?: { lat: number; lon: number; label?: string };
+  /** Compact summary of the latest assessment (verdict + risk + hazards). */
+  summary?: {
+    verdict: string;
+    risk: number;
+    riskLabel?: string;
+    circuitBreakerTriggered: boolean;
+    hazards: string[];
+  };
 }
 
 const QUICK_PROMPTS_EN = [
@@ -66,6 +79,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   language,
   lat,
   lon,
+  locationLabel,
   vesselLengthM,
   latestAssessment,
   onQuerySubmit,
@@ -269,8 +283,17 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       setInput('');
       setIsLoading(true);
 
+      // Capture the context BEFORE the async hop so the user sees
+      // which harbor this answer was computed for, even if they
+      // switch harbors while the request is in flight.
+      const requestLat = lat;
+      const requestLon = lon;
+      const requestLabel = locationLabel;
+
       try {
         const assessment = await onQuerySubmit(trimmed);
+        const hazards =
+          assessment.risk?.components?.map((c) => c.name).filter(Boolean) ?? [];
         const orcaMsg: Message = {
           id: `o-${Date.now()}`,
           sender: 'orca',
@@ -279,6 +302,14 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
             hour: '2-digit',
             minute: '2-digit',
           }),
+          context: { lat: requestLat, lon: requestLon, label: requestLabel },
+          summary: {
+            verdict: assessment.verdict,
+            risk: assessment.risk_score,
+            riskLabel: assessment.risk_label,
+            circuitBreakerTriggered: assessment.circuit_breaker_triggered,
+            hazards,
+          },
         };
         setMessages((prev) => [...prev, orcaMsg]);
         // Play the response aloud via browser SpeechSynthesis
@@ -295,11 +326,12 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           {
             id: `e-${Date.now()}`,
             sender: 'orca',
-            text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+            text: '⚠️ क्षमस्व, सर्व्हরशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
             timestamp: new Date().toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
             }),
+            context: { lat: requestLat, lon: requestLon, label: requestLabel },
           },
         ]);
       } finally {
@@ -307,7 +339,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
         setRecorderState('idle');
       }
     },
-    [isLoading, onQuerySubmit, speech],
+    [isLoading, lat, lon, locationLabel, onQuerySubmit, speech],
   );
 
   // -- Read the latest verdict aloud ----------------------------------------
@@ -420,7 +452,54 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
                         : 'bg-ocean-1000/70 border border-cyan-500/15 text-slate-100 rounded-tl-sm'
                     }`}
                   >
+                    {m.sender === 'orca' && m.context && (
+                      <p className="text-[9px] uppercase tracking-wider text-ink-muted font-bold mb-1">
+                        📍{' '}
+                        {m.context.label
+                          ? m.context.label
+                          : `${m.context.lat.toFixed(2)}°, ${m.context.lon.toFixed(2)}°`}
+                      </p>
+                    )}
                     <p className="selectable">{m.text}</p>
+                    {m.sender === 'orca' && m.summary && (
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <span
+                          className={`rounded-md border px-1.5 py-1 text-[10px] font-bold ${
+                            m.summary.circuitBreakerTriggered || m.summary.risk >= 75
+                              ? 'border-red-500/50 bg-red-950/40 text-red-200'
+                              : m.summary.risk >= 40
+                                ? 'border-amber-500/40 bg-amber-950/30 text-amber-200'
+                                : 'border-emerald-500/40 bg-emerald-950/30 text-emerald-200'
+                          }`}
+                        >
+                          <span className="block text-[8px] uppercase tracking-wider opacity-80">
+                            Risk
+                          </span>
+                          <span className="numeric">
+                            {m.summary.risk.toFixed(0)}/100
+                          </span>
+                        </span>
+                        <span className="rounded-md border border-cyan-500/30 bg-cyan-950/30 px-1.5 py-1 text-[10px] text-cyan-200">
+                          <span className="block text-[8px] uppercase tracking-wider opacity-80">
+                            Verdict
+                          </span>
+                          <span className="font-bold truncate block">
+                            {m.summary.riskLabel ?? m.summary.verdict}
+                          </span>
+                        </span>
+                        {m.summary.hazards.length > 0 && (
+                          <span className="col-span-2 rounded-md border border-amber-500/30 bg-amber-950/20 px-1.5 py-1 text-[10px] text-amber-200">
+                            <span className="block text-[8px] uppercase tracking-wider opacity-80">
+                              Hazards
+                            </span>
+                            <span className="truncate block">
+                              {m.summary.hazards.slice(0, 3).join(' · ')}
+                              {m.summary.hazards.length > 3 ? '…' : ''}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mt-1.5 text-[9px] text-ink-muted">
                       <span>{m.timestamp}</span>
                       {m.sender === 'orca' && (

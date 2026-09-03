@@ -228,6 +228,40 @@ export interface CanonicalRecord {
   notes: string;
 }
 
+export interface RiskComponent {
+  name: string;
+  score: number;
+  weighted_contribution: number;
+  details: Record<string, unknown>;
+}
+
+export interface RiskBreakdown {
+  risk_score: number;
+  risk_label: string;
+  risk_uncertainty: number;
+  data_confidence: number;
+  data_quality_score: number;
+  unavailable_parameters: string[];
+  components: RiskComponent[];
+  circuit_breaker: {
+    triggered: boolean;
+    forced_label: string | null;
+    data_quality_insufficient: boolean;
+    hits: Array<{
+      rule_id: string;
+      rule_description: string;
+      input_value: unknown;
+      threshold: unknown;
+      source: string;
+      timestamp: number;
+    }>;
+  };
+  risk_equation: string;
+  raw_score_before_cb?: number;
+  calculation_version?: string;
+  configuration_version?: string;
+}
+
 export interface TripAssessmentResponse {
   coordinate: Coordinate;
   vessel_length_m: number;
@@ -266,40 +300,6 @@ export interface VesselProfile {
   engine_hp: number;
   fuel_capacity_l: number;
   heading_deg?: number;
-}
-
-export interface RiskComponent {
-  name: string;
-  score: number;
-  weighted_contribution: number;
-  details: Record<string, unknown>;
-}
-
-export interface RiskBreakdown {
-  risk_score: number;
-  risk_label: string;
-  risk_uncertainty: number;
-  data_confidence: number;
-  data_quality_score: number;
-  unavailable_parameters: string[];
-  components: RiskComponent[];
-  circuit_breaker: {
-    triggered: boolean;
-    forced_label: string | null;
-    data_quality_insufficient: boolean;
-    hits: Array<{
-      rule_id: string;
-      rule_description: string;
-      input_value: unknown;
-      threshold: unknown;
-      source: string;
-      timestamp: number;
-    }>;
-  };
-  risk_equation: string;
-  raw_score_before_cb?: number;
-  calculation_version?: string;
-  configuration_version?: string;
 }
 
 export type VerdictTone = 'safe' | 'caution' | 'danger';
