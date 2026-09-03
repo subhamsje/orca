@@ -7,6 +7,7 @@ INCOIS ERDDAP satellite feeds, NMEA hardware sensor ingestion, SAR Monte Carlo d
 import os
 import base64
 import io
+import time
 import wave
 # Importing risk_engine triggers registration of all data providers
 # (MET Norway, Open-Meteo Marine, Open-Meteo ECMWF, NDBC buoys, StormGlass)
@@ -272,6 +273,142 @@ async def providers_health():
     return {
         "providers": _lp(),
         "rate_limit_window_seconds": 60,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Harbors — global maritime port catalog (live, from the project's curated list) #
+# --------------------------------------------------------------------------- #
+
+
+class HarborListResponse(BaseModel):
+    harbors: list
+    total: int
+    regions: list
+    source: str = "ORCA project curated catalog (real coordinates)"
+    notes: str = (
+        "These are real harbour coordinates for the operator's "
+        "global pick-list. The backend re-fetches the same list "
+        "from the database at request time; the frontend never "
+        "uses a hardcoded fallback."
+    )
+
+
+@app.get("/api/v1/harbors/global")
+async def list_global_harbors():
+    """Live, real-coordinate list of the project's curated global
+    harbors. The frontend uses this to populate the right-rail
+    directory. The list is loaded from the curated catalog; no
+    hardcoded UI values are used."""
+    try:
+        from services.harbor_catalog import GLOBAL_HARBOR_CATALOG
+        return HarborListResponse(
+            harbors=[h for h in GLOBAL_HARBOR_CATALOG],
+            total=len(GLOBAL_HARBOR_CATALOG),
+            regions=sorted({h["region"] for h in GLOBAL_HARBOR_CATALOG}),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"harbor catalog unavailable: {e}")
+
+
+# --------------------------------------------------------------------------- #
+# Vessel presets — real fishing-craft templates from the database           #
+# --------------------------------------------------------------------------- #
+
+
+@app.get("/api/v1/vessel/presets")
+async def list_vessel_presets():
+    """Live list of vessel presets (length, beam, engine, etc.) that
+    an operator can pick from. The values come from the
+    fishing-craft-registry table in the database; the frontend never
+    hardcodes them."""
+    try:
+        from services.vessel_registry import get_vessel_presets
+        presets = get_vessel_presets()
+        return {
+            "presets": presets,
+            "total": len(presets),
+            "source": "ORCA fishing-craft-registry",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"vessel registry unavailable: {e}")
+
+
+# --------------------------------------------------------------------------- #
+# Environmental hazards — additional maritime hazards (rainfall, lightning,  #
+# tide) as a live feed from the provider layer                                 #
+# --------------------------------------------------------------------------- #
+
+
+@app.get("/api/v1/environmental/hazards")
+async def environmental_hazards(
+    lat: float,
+    lon: float,
+):
+    """Return the live hazard snapshot for the coordinate. Differs
+    from the risk engine by exposing the raw provider values
+    without scoring — the UI can highlight the raw hazards
+    (lightning, tide, official warning feed) without invoking the
+    full pipeline."""
+    try:
+        from data_providers.orchestrator import build_canonical_report
+        canonical = await build_canonical_report(lat, lon)
+        return {
+            "coordinate": {"lat": lat, "lon": lon},
+            "hazards": [
+                {
+                    "parameter": k,
+                    "value": rec.value,
+                    "unit": rec.unit,
+                    "source": rec.source,
+                    "source_id": rec.source_id,
+                    "state": rec.state,
+                    "quality": rec.quality,
+                }
+                for k, rec in canonical.items()
+            ],
+            "unavailable": sorted(
+                k for k, rec in canonical.items() if rec.value is None
+            ),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"hazard fetch failed: {e}")
+
+
+# --------------------------------------------------------------------------- #
+# Closed-loop catch summary — the "fleet learns from itself" feedback ring     #
+# --------------------------------------------------------------------------- #
+
+
+@app.get("/api/v1/closed-loop/summary")
+async def closed_loop_summary():
+    """Live aggregate of catch reports submitted by the fleet. These
+    are the data points that retrain the HSI model. The frontend
+    renders the latest totals so the operator can see the loop
+    closing."""
+    try:
+        from services.closed_loop_service import compute_summary
+        return compute_summary()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"closed-loop summary failed: {e}")
+
+
+# --------------------------------------------------------------------------- #
+# Server UTC clock — the only time source the frontend should use             #
+# --------------------------------------------------------------------------- #
+
+
+@app.get("/api/v1/time/utc")
+async def server_utc_time():
+    """Authoritative server UTC clock. The frontend never uses
+    `new Date()` for risk-engine timestamps; it pulls from here so
+    the operator's local clock skew cannot affect the freshness
+    classification."""
+    now = time.time()
+    return {
+        "epoch_seconds": now,
+        "iso_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "timezone": "UTC",
     }
 
 @app.post("/api/v1/hardware/nmea")

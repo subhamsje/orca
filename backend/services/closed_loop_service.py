@@ -61,4 +61,13 @@ class ClosedLoopService:
             "model_version": "HSI-v4.0-ClosedLoop"
         }
 
+
+def compute_summary() -> Dict[str, Any]:
+    """Public alias used by the /api/v1/closed-loop/summary endpoint."""
+    return {
+        **closed_loop_service.get_calibration_summary(),
+        "loop_status": "open" if closed_loop_service.total_reports > 0 else "empty",
+        "recalibration_count": closed_loop_service.total_reports,
+    }
+
 closed_loop_service = ClosedLoopService()

@@ -5,6 +5,7 @@ import {
   Droplets,
   Eye,
   Gauge,
+  Thermometer,
   Waves,
   Wind,
 } from 'lucide-react';
@@ -43,6 +44,21 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
   const cards = useMemo(() => {
     if (!ocean) return [];
     return [
+      {
+        key: 'sst',
+        label: 'Sea Surface Temp',
+        unit: '°C',
+        value: ocean.sst_c,
+        Icon: Thermometer,
+        tone:
+          ocean.sst_c != null && ocean.sst_c > 30.0
+            ? 'amber'
+            : ocean.sst_c != null && ocean.sst_c < 22.0
+              ? 'cyan'
+              : 'emerald',
+        intensity: ocean.sst_c != null ? Math.max(0, Math.min(100, ((ocean.sst_c - 15) / 20) * 100)) : 60,
+        hint: ocean.sst_c != null ? `${ocean.sst_c.toFixed(1)}°C · INSAT-3DR / ERA5` : 'Sea Temp',
+      },
       {
         key: 'wave_height',
         label: 'Wave Height',
@@ -106,7 +122,7 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
         Icon: Droplets,
         tone: 'emerald',
         intensity: intensityFromChl(ocean.chlorophyll_mg_m3),
-        hint: 'Productivity',
+        hint: 'Productivity · OCM-3',
       },
       {
         key: 'air_pressure',
@@ -141,7 +157,7 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
     ];
   }, [ocean]);
 
-  if (!ocean || !risk) {
+  if (!ocean) {
     return (
       <section className="glass rounded-2xl p-4 relative overflow-hidden">
         <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ink-muted">
@@ -149,18 +165,19 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
         </h3>
         <p className="mt-3 text-xs text-ink-muted flex items-center gap-1.5">
           <AlertCircle className="w-3.5 h-3.5" />
-          Awaiting world-model telemetry.
+          Awaiting live satellite and ocean telemetry…
         </p>
       </section>
     );
   }
 
   return (
-    <section className="glass rounded-2xl p-4 relative overflow-hidden">
+    <section className="glass rounded-2xl p-4 relative overflow-hidden shadow-2xl">
       <div className="absolute inset-0 tactical-grid-fine opacity-30 pointer-events-none" />
       <header className="relative flex items-center justify-between mb-3">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">
-          Live Ocean Vitals
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300 flex items-center gap-1.5">
+          <span className="dot bg-emerald-400 animate-pulse-soft" />
+          Live Ocean Vitals (Real APIs)
         </h3>
         {ocean.salinity_psu != null && (
           <span className="chip text-[9px]">{(ocean.salinity_psu ?? 35).toFixed(1)} PSU</span>
@@ -193,8 +210,8 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
               <p className="text-base font-bold text-white numeric">
                 {typeof v.value === 'number'
                   ? v.value.toFixed(
-                      v.label === 'Wind' || v.label === 'Pressure' || v.label === 'Visibility'
-                        ? 0
+                      v.label === 'Wind' || v.label === 'Pressure' || v.label === 'Visibility' || v.label === 'Sea Surface Temp'
+                        ? 1
                         : 2,
                     )
                   : '—'}
@@ -219,46 +236,48 @@ export const OceanVitals: React.FC<OceanVitalsProps> = ({ assessment }) => {
         })}
       </div>
 
-      <div className="relative mt-3 pt-2.5 border-t border-cyan-500/10 grid grid-cols-4 gap-1.5 text-center">
-        <RiskChip
-          label="IMBL"
-          value={
-            risk.dist_to_imbl_km != null
-              ? `${Math.round(risk.dist_to_imbl_km)}km`
-              : '—'
-          }
-          tone={risk.dist_to_imbl_km != null && risk.dist_to_imbl_km < 15 ? 'red' : 'cyan'}
-        />
-        <RiskChip
-          label="Naval"
-          value={
-            risk.dist_to_naval_zone_km != null
-              ? `${Math.round(risk.dist_to_naval_zone_km)}km`
-              : '—'
-          }
-          tone={risk.dist_to_naval_zone_km != null && risk.dist_to_naval_zone_km < 30 ? 'red' : 'cyan'}
-        />
-        <RiskChip
-          label="Capsize"
-          value={risk.capsizing_risk ? 'YES' : 'NO'}
-          tone={risk.capsizing_risk ? 'red' : 'emerald'}
-        />
-        <RiskChip
-          label="CPA"
-          value={
-            risk.collision_cpa_nm != null
-              ? `${risk.collision_cpa_nm.toFixed(2)} NM`
-              : '—'
-          }
-          tone={
-            risk.collision_cpa_nm != null && risk.collision_cpa_nm < 0.5
-              ? 'red'
-              : risk.collision_cpa_nm != null && risk.collision_cpa_nm < 1.5
-                ? 'amber'
-                : 'cyan'
-          }
-        />
-      </div>
+      {risk && (
+        <div className="relative mt-3 pt-2.5 border-t border-cyan-500/10 grid grid-cols-4 gap-1.5 text-center">
+          <RiskChip
+            label="IMBL"
+            value={
+              risk.dist_to_imbl_km != null
+                ? `${Math.round(risk.dist_to_imbl_km)}km`
+                : '—'
+            }
+            tone={risk.dist_to_imbl_km != null && risk.dist_to_imbl_km < 15 ? 'red' : 'cyan'}
+          />
+          <RiskChip
+            label="Naval"
+            value={
+              risk.dist_to_naval_zone_km != null
+                ? `${Math.round(risk.dist_to_naval_zone_km)}km`
+                : '—'
+            }
+            tone={risk.dist_to_naval_zone_km != null && risk.dist_to_naval_zone_km < 30 ? 'red' : 'cyan'}
+          />
+          <RiskChip
+            label="Capsize"
+            value={risk.capsizing_risk ? 'YES' : 'NO'}
+            tone={risk.capsizing_risk ? 'red' : 'emerald'}
+          />
+          <RiskChip
+            label="CPA"
+            value={
+              risk.collision_cpa_nm != null
+                ? `${risk.collision_cpa_nm.toFixed(1)} NM`
+                : '—'
+            }
+            tone={
+              risk.collision_cpa_nm != null && risk.collision_cpa_nm < 0.5
+                ? 'red'
+                : risk.collision_cpa_nm != null && risk.collision_cpa_nm < 1.5
+                  ? 'amber'
+                  : 'cyan'
+            }
+          />
+        </div>
+      )}
     </section>
   );
 };

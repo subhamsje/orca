@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Send, Volume2, Sparkles, Bot, User, RefreshCw } from 'lucide-react';
 import { useSpeech } from '../hooks/useSpeech';
-import { fetchTripAssessment } from '../utils/api';
+import { fetchAssessNow } from '../utils/api';
 import { TripAssessmentResponse } from '../types';
 
 interface Message { id: string; sender: 'user' | 'orca'; text: string; timestamp: string; assessment?: TripAssessmentResponse; }
@@ -62,7 +62,7 @@ export const AskOrcaView: React.FC<AskOrcaViewProps> = ({ language, onQuerySubmi
     setInputText(''); setIsLoading(true);
     try {
       onQuerySubmit(text);
-      const a = await fetchTripAssessment(16.0500, 73.4667, 8.5, language, text);
+      const a = await fetchAssessNow(16.0500, 73.4667, 8.5, language);
       setMessages((prev) => [...prev, { id: `orca_${Date.now()}`, sender: 'orca', text: a.explanation.plain_language_text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), assessment: a }]);
       speech.play(a.explanation.plain_language_text);
     } catch { setMessages((prev) => [...prev, { id: `orca_${Date.now()}`, sender: 'orca', text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली.', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); }
