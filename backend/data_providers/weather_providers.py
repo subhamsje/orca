@@ -228,6 +228,7 @@ async def fetch_open_meteo_forecast(lat: float, lon: float) -> List[CanonicalRec
                     "longitude": lon,
                     "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,temperature_2m,cloud_cover,visibility,relative_humidity_2m,precipitation",
                     "hourly": "precipitation,wind_speed_10m,wind_gusts_10m",
+                    "wind_speed_unit": "ms",
                     "forecast_days": 1,
                     "timezone": "auto",
                 },
@@ -323,14 +324,14 @@ async def fetch_open_meteo_ecmwf(lat: float, lon: float) -> List[CanonicalRecord
             obs = _parse_iso(t)
             break
         fields = [
-            ("wind_speed", "wind_speed_10m", "m/s", "km/h", 3.6),
-            ("wind_direction", "wind_direction_10m", "deg", "deg", 1),
-            ("wind_gust", "wind_gusts_10m", "m/s", "km/h", 3.6),
-            ("air_pressure", "surface_pressure", "hPa", "hPa", 1),
-            ("air_temperature", "temperature_2m", "°C", "°C", 1),
-            ("cloud_cover", "cloud_cover", "%", "%", 1),
+            ("wind_speed", "wind_speed_10m", "km/h", "m/s", 1.0 / 3.6),
+            ("wind_direction", "wind_direction_10m", "deg", "deg", 1.0),
+            ("wind_gust", "wind_gusts_10m", "km/h", "m/s", 1.0 / 3.6),
+            ("air_pressure", "surface_pressure", "hPa", "hPa", 1.0),
+            ("air_temperature", "temperature_2m", "°C", "°C", 1.0),
+            ("cloud_cover", "cloud_cover", "%", "%", 1.0),
             ("visibility", "visibility", "m", "km", 0.001),
-            ("precipitation", "total_precipitation", "mm", "mm", 1),
+            ("precipitation", "total_precipitation", "mm", "mm", 1.0),
         ]
         for param, key, src_unit, dst_unit, scale in fields:
             arr = h.get(key, [])

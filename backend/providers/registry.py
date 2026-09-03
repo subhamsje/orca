@@ -310,6 +310,7 @@ async def _fetch_open_meteo_ecmwf(
             "latitude": lat,
             "longitude": lon,
             "hourly": "temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,cloud_cover,total_precipitation,visibility",
+            "wind_speed_unit": "ms",
             "forecast_days": 1,
         },
     )
@@ -375,6 +376,7 @@ async def _fetch_open_meteo_forecast(
             "longitude": lon,
             "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,temperature_2m,cloud_cover,visibility,relative_humidity_2m,precipitation",
             "hourly": "precipitation",
+            "wind_speed_unit": "ms",
             "forecast_days": 1,
             "timezone": "auto",
         },

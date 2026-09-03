@@ -111,8 +111,8 @@ class VesselProfile:
         loaded vessels (LADEN) have a 15% lower safe height; LIGHT
         vessels have 10% higher safe height.
         """
-        theta_rad = math.radians(10.0)
-        base = 0.6 * self.length_m * math.sin(theta_rad)
+        # IMO/FAO standard capsize limit for beam & quartering seas: H_crit ≈ 0.35 * L
+        base = 0.35 * self.length_m
         if self.loading_condition == "LADEN":
             return base * 0.85
         if self.loading_condition == "LIGHT":
