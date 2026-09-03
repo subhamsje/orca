@@ -342,6 +342,7 @@ export function App() {
         language={language}
         lat={selectedHarbor.lat}
         lon={selectedHarbor.lon}
+        locationLabel={selectedHarbor.name}
         vesselLengthM={vesselProfile.length_m}
         latestAssessment={assessment}
         onQuerySubmit={handleVoiceQuery}

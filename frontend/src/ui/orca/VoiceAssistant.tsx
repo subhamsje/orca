@@ -326,7 +326,7 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           {
             id: `e-${Date.now()}`,
             sender: 'orca',
-            text: '⚠️ क्षमस्व, सर्व्हরशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+            text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली. कृपया पुन्हा प्रयत्न करा.',
             timestamp: new Date().toLocaleTimeString([], {
               hour: '2-digit',
               minute: '2-digit',
