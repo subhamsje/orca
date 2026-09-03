@@ -112,7 +112,6 @@ def evaluate_circuit_breaker(
             )
             result.triggered = True
             result.forced_label = "EXTREME_DANGER_CYCLONE"
-            return result
         if alerts.get("port_danger_signal") is not None and alerts.get("port_danger_signal") >= 7:
             result.hits.append(
                 CircuitBreakerHit(
@@ -124,8 +123,8 @@ def evaluate_circuit_breaker(
                 )
             )
             result.triggered = True
-            result.forced_label = "EXTREME_DANGER"
-            return result
+            if not result.forced_label:
+                result.forced_label = "EXTREME_DANGER"
 
     # 2. Geofence violations ---------------------------------------------
     if geofence:
@@ -141,7 +140,6 @@ def evaluate_circuit_breaker(
             )
             result.triggered = True
             result.forced_label = "EXTREME_DANGER"
-            return result
         if geofence.get("inside_imbl_buffer_warning") is True:
             result.hits.append(
                 CircuitBreakerHit(
@@ -153,23 +151,26 @@ def evaluate_circuit_breaker(
                 )
             )
             result.triggered = True
-            result.forced_label = "HIGH_RISK_IMBL"
-            return result
+            if result.forced_label not in ("EXTREME_DANGER", "EXTREME_DANGER_CYCLONE"):
+                result.forced_label = "HIGH_RISK_IMBL"
 
     # 3. Manufacturer hard limits ----------------------------------------
+    # NOTE: wind_gust is reported in m/s by every provider; the
+    # vessel's max_manufacturer_wind_kmh is in km/h. Convert.
     gust = state.value("wind_gust")
-    if gust is not None and gust > vessel.max_manufacturer_wind_kmh:
+    if gust is not None and (gust * 3.6) > vessel.max_manufacturer_wind_kmh:
         result.hits.append(
             CircuitBreakerHit(
                 rule_id="CB-WND-001",
                 rule_description="Wind gust exceeds the vessel's manufacturer maximum wind.",
                 input_value=gust,
-                threshold=vessel.max_manufacturer_wind_kmh,
+                threshold=vessel.max_manufacturer_wind_kmh / 3.6,
                 source="vessel.max_manufacturer_wind_kmh",
             )
         )
         result.triggered = True
-        result.forced_label = "HIGH_RISK_GUST"
+        if not result.forced_label:
+            result.forced_label = "HIGH_RISK_GUST"
 
     hs = state.value("wave_height")
     if hs is not None and hs > vessel.max_safe_wave_height_m:
@@ -183,9 +184,7 @@ def evaluate_circuit_breaker(
             )
         )
         result.triggered = True
-        result.forced_label = result.forced_label or "HIGH_RISK_CAPSIZE"
-
-    # 4. Geofence (if no alert-driven rule) ------------------------------
-    # Already covered above via the geofence arg.
+        if not result.forced_label:
+            result.forced_label = "HIGH_RISK_CAPSIZE"
 
     return result

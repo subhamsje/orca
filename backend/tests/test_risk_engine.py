@@ -227,9 +227,23 @@ class TestCircuitBreaker(unittest.TestCase):
 
     def test_imbl_buffer_forces_high_risk(self):
         v = default_craft_profile(length_m=8.5)
-        s = _state(wave_height=0.3, wind_speed=5.0, wind_gust=10.0)
+        # Use a very small gust so the gust rule doesn't fire first
+        s = _state(wave_height=0.3, wind_speed=5.0, wind_gust=8.0)
         r = compute_risk(s, v, geofence={"inside_imbl_buffer_warning": True})
         self.assertEqual(r.risk_label, "HIGH_RISK_IMBL")
+
+    def test_wind_gust_exceeds_manufacturer_max(self):
+        # Regression: ensure the wind-gust rule fires when the
+        # gust (in m/s) exceeds the vessel's manufacturer max (in km/h).
+        # 25 m/s = 90 km/h, manufacturer default = 60 km/h.
+        v = default_craft_profile(length_m=8.5)
+        s = _state(
+            wave_height=0.3, wind_speed=10.0, wind_gust=25.0, air_pressure=1012.0
+        )
+        r = compute_risk(s, v)
+        self.assertTrue(r.circuit_breaker.triggered)
+        rule_ids = [h.rule_id for h in r.circuit_breaker.hits]
+        self.assertIn("CB-WND-001", rule_ids)
 
     def test_insufficient_data_quality_suppresses_verdict(self):
         v = default_craft_profile(length_m=8.5)

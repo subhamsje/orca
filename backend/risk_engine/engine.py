@@ -80,6 +80,7 @@ class RiskResult:
     calculation_version: str
     configuration_version: str
     risk_equation: str
+    raw_score_before_cb: int = 0   # score before any CB override (for reconciliation)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -94,6 +95,7 @@ class RiskResult:
             "calculation_version": self.calculation_version,
             "configuration_version": self.configuration_version,
             "risk_equation": self.risk_equation,
+            "raw_score_before_cb": self.raw_score_before_cb,
         }
 
 
@@ -197,7 +199,7 @@ def compute_risk(
         risk_label = "EXTREME_DANGER"
         risk_score_final = max(final_score, 90)
     elif cb.forced_label in ("HIGH_RISK_GUST", "HIGH_RISK_CAPSIZE", "HIGH_RISK_IMBL"):
-        risk_label = "HIGH_RISK"
+        risk_label = cb.forced_label
         risk_score_final = max(final_score, 75)
     elif cb.triggered:
         risk_label = "HIGH_RISK"
@@ -218,4 +220,5 @@ def compute_risk(
         calculation_version=CALCULATION_VERSION,
         configuration_version=CONFIGURATION_VERSION,
         risk_equation=RISK_EQUATION_DOC,
+        raw_score_before_cb=final_score,
     )
