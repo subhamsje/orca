@@ -17,7 +17,7 @@ GLOBAL_HARBOR_CATALOG: List[Dict[str, Any]] = [
     {"id": "mirkarwada", "name": "Mirkarwada Harbor (Ratnagiri)", "state": "Maharashtra", "country": "India", "lat": 16.9900, "lon": 73.2800, "region": "INDIA", "description": "Deep Sea Trawler Port"},
     {"id": "panaji", "name": "Panaji Jetty (Goa)", "state": "Goa", "country": "India", "lat": 15.5000, "lon": 73.8300, "region": "INDIA", "description": "Mandovi Estuary Port"},
     {"id": "mumbai_sassoon", "name": "Sassoon Dock (Mumbai)", "state": "Maharashtra", "country": "India", "lat": 18.9220, "lon": 72.8347, "region": "INDIA", "description": "Historic Commercial Dock"},
-    {"id": "veraval", "name": "Veraval Fishing Harbor", "state": "Gujarat", "India", "country": "India", "lat": 20.9000, "lon": 70.3700, "region": "INDIA", "description": "Kathiawar Peninsula Hub"},
+    {"id": "veraval", "name": "Veraval Fishing Harbor", "state": "Gujarat", "country": "India", "lat": 20.9000, "lon": 70.3700, "region": "INDIA", "description": "Kathiawar Peninsula Hub"},
     {"id": "mangalore", "name": "Mangalore Old Port", "state": "Karnataka", "country": "India", "lat": 12.8600, "lon": 74.8300, "region": "INDIA", "description": "Gurupura River Basin"},
     {"id": "kochi", "name": "Thoppumpady (Kochi)", "state": "Kerala", "country": "India", "lat": 9.9400, "lon": 76.2600, "region": "INDIA", "description": "Vembanad Lake Estuary"},
     {"id": "kanyakumari", "name": "Kanyakumari Port", "state": "Tamil Nadu", "country": "India", "lat": 8.0800, "lon": 77.5500, "region": "INDIA", "description": "Laccadive Sea Boundary"},

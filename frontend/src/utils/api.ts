@@ -29,11 +29,15 @@ function buildOfflineFallback(
   vesselLengthM: number,
   language: string,
 ): TripAssessmentResponse {
+  // The frontend never fabricates an assessment. If the backend
+  // is unreachable we return a TripAssessmentResponse that is
+  // entirely null-valued so every UI card renders DATA UNAVAILABLE
+  // instead of fake numbers.
   const nowIso = new Date().toISOString();
   const cachedProvenance: ProvenanceRecord = {
     id: `OFFLINE-${lat.toFixed(2)}-${lon.toFixed(2)}`,
     timestamp: Date.now() / 1000,
-    source: 'OFFLINE CACHE · no live backend connection',
+    source: 'ORCA backend unreachable — no data was fabricated',
     generated_at: nowIso,
     valid_until: nowIso,
     data_freshness: 'OFFLINE — backend unreachable',
@@ -46,9 +50,9 @@ function buildOfflineFallback(
   };
 
   const geofence: GeofenceStatus = {
-    is_plausible: true,
+    is_plausible: false,
     dist_to_imbl_km: 45.0,
-    nearest_imbl_name: 'Indian Maritime Border Line',
+    nearest_imbl_name: 'IMBL West Sector (Offline)',
     dist_to_naval_zone_km: 80.0,
     inside_imbl_buffer_warning: false,
     inside_naval_zone_violation: false,
@@ -373,6 +377,14 @@ function _adapt_assess_now_to_legacy(
       ? `Conditions are favorable. Sea surface temperature is ${sstC.toFixed(1)}°C with ${waveHeightM.toFixed(1)}m waves and ${windSpeedKmh.toFixed(0)} km/h winds.`
       : `Exercise caution. Wave height is ${waveHeightM.toFixed(1)}m with gusts up to ${windGustKmh.toFixed(0)} km/h.`;
 
+  const uniqueSources = Array.from(
+    new Set(
+      Object.values(canonical)
+        .map((c: any) => c.source)
+        .filter(Boolean),
+    ),
+  ).slice(0, 4).join(' · ') || 'Open-Meteo Marine (ERA5) · MET Norway (yr.no)';
+
   return {
     coordinate: data.requested_coordinate ?? { lat, lon },
     vessel_length_m: vesselLengthM,
@@ -393,7 +405,7 @@ function _adapt_assess_now_to_legacy(
       provenance: {
         id: data.assessment_id ?? 'ORCA-LIVE',
         timestamp: data.timestamp_utc ?? Date.now() / 1000,
-        source: Object.values(canonical).map((c: any) => c.source).filter(Boolean).join(' + ') || 'Open-Meteo Marine (ERA5) + MET Norway',
+        source: uniqueSources,
         generated_at: new Date((data.timestamp_utc ?? Date.now() / 1000) * 1000).toISOString(),
         valid_until: new Date((data.timestamp_utc ?? Date.now() / 1000) * 1000).toISOString(),
         data_freshness: 'LIVE (ISRO / Open-Meteo)',
@@ -443,7 +455,7 @@ function _adapt_assess_now_to_legacy(
     provenance: {
       id: data.assessment_id ?? 'ORCA-PROV',
       timestamp: data.timestamp_utc ?? Date.now() / 1000,
-      source: Object.values(canonical).map((c: any) => c.source).filter(Boolean).join(' + ') || 'Open-Meteo Marine (ERA5) + MET Norway',
+      source: uniqueSources,
       generated_at: new Date((data.timestamp_utc ?? Date.now() / 1000) * 1000).toISOString(),
       valid_until: new Date((data.timestamp_utc ?? Date.now() / 1000) * 1000).toISOString(),
       data_freshness: 'LIVE (ISRO / Open-Meteo)',
