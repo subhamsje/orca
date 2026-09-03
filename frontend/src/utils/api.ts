@@ -51,9 +51,9 @@ function buildOfflineFallback(
 
   const geofence: GeofenceStatus = {
     is_plausible: false,
-    dist_to_imbl_km: 45.0,
-    nearest_imbl_name: 'IMBL West Sector (Offline)',
-    dist_to_naval_zone_km: 80.0,
+    dist_to_imbl_km: null,
+    nearest_imbl_name: null,
+    dist_to_naval_zone_km: null,
     inside_imbl_buffer_warning: false,
     inside_naval_zone_violation: false,
     turn_back_bearing_deg: 0,
@@ -63,17 +63,17 @@ function buildOfflineFallback(
   const explanation: ExplanationResult = {
     plain_language_text:
       language === 'Marathi'
-        ? '⚠️ ऑफलाइन मोड: सर्व्हरशी थेट संपर्क नाही.'
-        : '⚠️ Offline mode: live ocean server unreachable.',
-    wave_description: 'Connecting to satellite link…',
+        ? '⚠️ ऑफलाइन: सर्व्हरशी संपर्क नाही. प्रतीक्षा करा…'
+        : '⚠️ Backend unreachable. Every value reads DATA UNAVAILABLE.',
+    wave_description: 'DATA UNAVAILABLE — backend offline',
     language,
     voice_code: 'en-US',
     provenance_summary: {
-      satellites: ['INSAT-3DR', 'Oceansat-3'],
-      ocean_models: ['Open-Meteo Marine (ERA5)', 'MET Norway'],
-      data_freshness: 'OFFLINE',
-      confidence_score: 0.85,
-      audit_hash: 'OFFLINE-CACHE',
+      satellites: [],
+      ocean_models: [],
+      data_freshness: 'OFFLINE — backend unreachable',
+      confidence_score: 0,
+      audit_hash: 'OFFLINE-NO-DATA',
     },
   };
 
@@ -81,38 +81,52 @@ function buildOfflineFallback(
     coordinate: { lat, lon },
     vessel_length_m: vesselLengthM,
     language,
-    verdict: 'SAFE TO VENTURE',
-    risk_score: 28,
-    circuit_breaker_triggered: false,
-    override_reason: null,
-    pfz_grounds: [
-      {
-        rank: 1,
-        name: `Zone Alpha (${lat.toFixed(2)}°N, ${lon.toFixed(2)}°E)`,
-        distance_km: 12.4,
-        hsi: 82,
-        likely_species: ['Bangda (Indian Mackerel)', 'Surmai (Kingfish)'],
-        coordinates: [lat + 0.08, lon + 0.12],
-      },
-    ],
-    species_matrix: {
-      'Bangda (Indian Mackerel)': 84,
-      'Surmai (Kingfish)': 76,
-      'Poplet (Pomfret)': 68,
-      'Tarli (Sardine)': 72,
-    },
+    verdict: 'DATA_UNAVAILABLE',
+    risk_score: 0,
+    circuit_breaker_triggered: true,
+    override_reason: 'Backend unreachable. No data was fabricated.',
+    pfz_grounds: [],
+    species_matrix: {},
     route: {
-      path_type: 'Direct Waypoint',
-      total_distance_km: 12.4,
-      estimated_travel_mins: 45,
-      waypoints: [[lat, lon], [lat + 0.08, lon + 0.12]],
+      path_type: 'A*',
+      total_distance_km: 0,
+      estimated_travel_mins: 0,
+      waypoints: [],
       avoided_hazards: [],
-      fuel_consumption_est_liters: 14.5,
+      fuel_consumption_est_liters: 0,
     },
     economics: {
-      best_docking_harbor: 'Mirkarwada Dock',
-      max_expected_profit_inr: 28400,
-      estimated_catch_kg: 180,
+      best_docking_harbor: '—',
+      max_expected_profit_inr: 0,
+      estimated_catch_kg: 0,
+      target_species: '—',
+      fuel_cost_total_inr: 0,
+      harbor_comparisons: [],
+    },
+    geofence_status: geofence,
+    explanation,
+    provenance: cachedProvenance,
+    canonical_records: {},
+    canonical_data_unavailable: [
+      'sea_surface_temperature',
+      'wave_height',
+      'wind_speed',
+      'wind_direction',
+      'air_pressure',
+      'air_temperature',
+      'visibility',
+      'cloud_cover',
+      'current_speed',
+      'swell_wave_height',
+      'salinity',
+      'chlorophyll',
+    ],
+    telemetry: {
+      execution_ms: 0,
+      services_triggered: ['offline_placeholder'],
+    },
+  };
+}
       target_species: 'Bangda',
       fuel_cost_total_inr: 3200,
       harbor_comparisons: [],
@@ -129,36 +143,6 @@ function buildOfflineFallback(
   };
 }
 
-/**
- * Fetch a trip assessment from the ORCA backend.
- */
-export async function fetchTripAssessment(
-  lat: number,
-  lon: number,
-  vesselLengthM: number = 8.5,
-  language: string = 'English',
-): Promise<TripAssessmentResponse> {
-  try {
-    const url = `${API_BASE_URL}/api/v1/assess-trip`;
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        latitude: lat,
-        longitude: lon,
-        vessel_length_m: vesselLengthM,
-        language,
-      }),
-    });
-
-    if (!r.ok) {
-      return buildOfflineFallback(lat, lon, vesselLengthM, language);
-    }
-    return await r.json();
-  } catch {
-    return buildOfflineFallback(lat, lon, vesselLengthM, language);
-  }
-}
 
 /**
  * Fetch an assessment directly from the primary pipeline endpoint.
