@@ -292,7 +292,7 @@ def fill_slide_3(slide):
         ("INCOIS", "erddap (roadmap)"),
         ("IMD", "CWD / Mausam (roadmap)"),
         ("COPERNICUS MARINE", "needs credentials"),
-        ("OPEN-METEO MARINE / ECMWF / FORECAST", "live, no creds"),
+        ("OPEN-METEO MARINE / ECMWF / FORECAST", "5 live providers, no creds"),
         ("MET NORWAY (yr.no)", "live, no creds"),
         ("NOAA NDBC BUOYS", "live, in-situ"),
         ("AIS / VESSEL TELEMETRY", "via LoRa / NMEA"),
@@ -315,7 +315,7 @@ def fill_slide_3(slide):
     stages = [
         ("PROVIDER ABSTRACTION  ·  circuit breaker  ·  rate limit",
          TEAL, 0.55),
-        ("CANONICAL NORMALIZATION  ·  18 params  ·  provenance",
+        ("CANONICAL NORMALIZATION  ·  18 parameters  ·  provenance",
          CYAN, 0.55),
         ("ENVIRONMENTAL STATE  ·  CURRENT / RECENT / STALE / UNAVAILABLE",
          TEAL, 0.55),
@@ -366,9 +366,17 @@ def fill_slide_3(slide):
          line_rgb=TEAL, line_w=Pt(1))
     text(slide, demo_x, demo_y, Inches(2.10), Inches(0.55),
          text="LIVE DEMO:  /api/v1/assess-now\n"
-              "Kanyakumari → MRSI 75 / 100",
+              "Kanyakumari → MRSI = 75 / 100",
          size=8, bold=True, color=TEAL, align=PP_ALIGN.CENTER,
          anchor=MSO_ANCHOR.MIDDLE)
+
+    # Honest note: multi-objective Pareto is v0 placeholder
+    note_y = dy + dh - Inches(0.95)
+    text(slide, Inches(0.5), note_y, Inches(12.33), Inches(0.35),
+         text="Note: ORCA's multi-objective Pareto route planner is a v0 "
+              "placeholder today — per-segment MRSI is the production "
+              "route engine.",
+         size=10, color=AMBER, italic=True, align=PP_ALIGN.CENTER)
 
 
 def fill_slide_4(slide):
@@ -449,11 +457,11 @@ def fill_slide_4(slide):
          anchor=MSO_ANCHOR.MIDDLE)
     phases = [
         ("PROTOTYPE",  "Cloud-only · free-tier (Vercel + Open-Meteo)",
-         "indicative", TEAL),
+         "indicative · vendor-dependent", TEAL),
         ("PILOT",      "≈ ₹4 000 / mo on commodity VPS · 10⁵ assessments",
-         "indicative", TEAL),
+         "indicative · vendor-dependent", TEAL),
         ("SCALE",      "Adds StormGlass / Copernicus keys · vendor-dep.",
-         "indicative", TEAL),
+         "indicative · vendor-dependent", TEAL),
     ]
     yy = stack_y + Inches(0.65)
     for label, body, tag, color in phases:

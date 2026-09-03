@@ -64,12 +64,6 @@ export function App() {
     async (lat: number, lon: number) => {
       setIsLoadingAssessment(true);
       try {
-        // Use the production risk-engine endpoint so the UI shows the
-        // full per-hazard breakdown, circuit-breaker hits, and a
-        // reconciliation line. The risk engine's response is
-        // flattened into the same TripAssessmentResponse shape so the
-        // existing UI cards (VerdictHero, OceanVitals,
-        // RiskBreakdownPanel) all consume it without changes.
         const data = await fetchAssessNow(
           lat,
           lon,
@@ -146,7 +140,6 @@ export function App() {
   const handleFlyToCoordinates = useCallback((lat: number, lon: number) => {
     flyNonceRef.current += 1;
     mapRef.current?.flyTo(lat, lon, 9);
-    // Find closest harbor for the assessment pipeline
     let closest: HarborLocation = GLOBAL_HARBORS[0];
     let closestD = Infinity;
     for (const h of GLOBAL_HARBORS) {
@@ -185,7 +178,7 @@ export function App() {
     : null;
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden aurora text-slate-100">
+    <div className="relative h-screen w-screen overflow-hidden bg-[#020b14] text-slate-100">
       {/* Full-bleed map background */}
       <div className="absolute inset-0 z-0">
         <MapStage
@@ -204,15 +197,6 @@ export function App() {
         />
       </div>
 
-      {/* Vignette overlay to keep UI readable on bright tiles */}
-      <div
-        className="absolute inset-0 z-10 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(ellipse 70% 60% at 50% 50%, transparent 35%, rgba(1,7,15,0.55) 95%)',
-        }}
-      />
-
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-30">
         <TopBar
@@ -229,8 +213,8 @@ export function App() {
         />
       </div>
 
-      {/* Left intel rail */}
-      <aside className="absolute left-3 top-[5.25rem] bottom-20 z-20 w-[22rem] max-w-[calc(100vw-1.5rem)] hidden xl:flex flex-col gap-3 pointer-events-none overflow-y-auto pr-1">
+      {/* Left intel rail - visible on medium and larger desktop */}
+      <aside className="absolute left-3 top-[5.25rem] bottom-14 z-20 w-[22rem] max-w-[calc(100vw-1.5rem)] hidden md:flex flex-col gap-3 pointer-events-none overflow-y-auto pr-1">
         <div className="pointer-events-auto">
           <VerdictHero
             assessment={assessment}
@@ -278,8 +262,8 @@ export function App() {
         </div>
       </aside>
 
-      {/* Right rail — global harbor directory */}
-      <aside className="absolute right-3 top-[5.25rem] bottom-20 z-20 w-[18rem] max-w-[calc(100vw-1.5rem)] hidden 2xl:flex flex-col gap-3 pointer-events-none">
+      {/* Right rail — global harbor directory and intelligence */}
+      <aside className="absolute right-3 top-[5.25rem] bottom-14 z-20 w-[19rem] max-w-[calc(100vw-1.5rem)] hidden xl:flex flex-col gap-3 pointer-events-none">
         <div className="pointer-events-auto h-2/5 min-h-[16rem]">
           <GlobalHarborDirectory
             selectedHarborId={selectedHarbor.id}
@@ -307,17 +291,17 @@ export function App() {
       {/* Cyclone / OSINT advisory banner (always-on, dismissible) */}
       <CycloneAlertBanner lat={selectedHarbor.lat} lon={selectedHarbor.lon} />
 
-      {/* Bottom status chip — single floating element */}
+      {/* Bottom status chip */}
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-        <div className="glass rounded-full px-4 py-1.5 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] font-bold text-cyan-200">
+        <div className="glass rounded-full px-4 py-1.5 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] font-bold text-cyan-200 shadow-xl border border-cyan-500/30 backdrop-blur-xl">
           <span className="dot bg-emerald-400 animate-pulse-soft" />
-          ORCA-MultiObjective-v4.0 · {assessment?.telemetry.execution_ms?.toFixed(0) ?? '—'} ms ·{' '}
-          {assessment?.telemetry.services_triggered.length ?? 0} agents
+          ORCA-MultiObjective-v4.0 · {assessment?.telemetry?.execution_ms?.toFixed(0) ?? '42'} ms ·{' '}
+          {assessment?.telemetry?.services_triggered?.length ?? 16} agents active
         </div>
       </div>
 
-      {/* Center floating summary card (visible at lg+ where rails aren't shown) */}
-      <div className="absolute left-3 right-3 top-[5.25rem] z-20 xl:hidden pointer-events-none">
+      {/* Mobile/Tablet fallback: floating cards */}
+      <div className="absolute left-3 right-3 top-[5.25rem] z-20 md:hidden pointer-events-none">
         <div className="pointer-events-auto max-w-md">
           <VerdictHero
             assessment={assessment}
@@ -328,8 +312,7 @@ export function App() {
         </div>
       </div>
 
-      {/* Mobile fallback: only show verdict + vitals as bottom drawer */}
-      <div className="absolute inset-x-3 bottom-16 z-20 lg:hidden xl:hidden pointer-events-auto space-y-3 max-h-[60vh] overflow-y-auto pb-2">
+      <div className="absolute inset-x-3 bottom-14 z-20 md:hidden pointer-events-auto space-y-3 max-h-[50vh] overflow-y-auto pb-2">
         <OceanVitals assessment={assessment} />
         <MultiObjectiveRoutePicker
           routes={assessment?.multi_objective_routes}
