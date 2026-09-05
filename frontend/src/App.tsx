@@ -158,12 +158,18 @@ export function App() {
 
   const handleVoiceQuery = useCallback(
     async (text: string): Promise<TripAssessmentResponse> => {
-      const data = await fetchAssessNow(
+      // For voice queries, fetch the FULL trip assessment (not just risk)
+      // and pass `query_text` so the backend's NLG engine can produce a
+      // tailored answer for what the user actually asked. Without
+      // query_text, every question at the same harbor would return the
+      // same canned plain-language explanation.
+      const data = await fetchTripAssessment(
         selectedHarbor.lat,
         selectedHarbor.lon,
         vesselProfile.length_m,
         language,
         vesselProfile.heading_deg,
+        text,
       );
       setAssessment(data);
       return data;
@@ -295,8 +301,14 @@ export function App() {
       <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div className="glass rounded-full px-4 py-1.5 flex items-center gap-3 text-[10px] uppercase tracking-[0.18em] font-bold text-cyan-200 shadow-xl border border-cyan-500/30 backdrop-blur-xl">
           <span className="dot bg-emerald-400 animate-pulse-soft" />
-          ORCA-MultiObjective-v4.0 · {assessment?.telemetry?.execution_ms?.toFixed(0) ?? '42'} ms ·{' '}
-          {assessment?.telemetry?.services_triggered?.length ?? 16} agents active
+          ORCA-MultiObjective-v4.0
+          {assessment?.telemetry?.execution_ms != null && (
+            <> · {assessment.telemetry.execution_ms.toFixed(0)} ms</>
+          )}
+          {assessment?.telemetry?.services_triggered && (
+            <> · {assessment.telemetry.services_triggered.length} agents active</>
+          )}
+          {!assessment && <> · awaiting telemetry</>}
         </div>
       </div>
 

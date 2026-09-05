@@ -116,14 +116,21 @@ export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, isLo
 
       {/* Stability & Bathymetry */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <VesselStabilityGauge vesselLengthM={assessment.vessel_length_m} waveHeightM={1.1} rollAngleDeg={4.2} />
-        <OceanBathymetryChart currentDepthM={48.5} vesselDraftM={0.8} />
+        <VesselStabilityGauge
+          vesselLengthM={assessment.vessel_length_m}
+          waveHeightM={assessment.world_model?.ocean_state?.wave_height_m}
+          rollAngleDeg={assessment.world_model?.risk_state?.wave_steepness_ratio != null ? Math.min(15, assessment.world_model.risk_state.wave_steepness_ratio * 90) : undefined}
+        />
+        <OceanBathymetryChart
+          currentDepthM={assessment.world_model?.risk_state?.grounding_depth_m}
+          vesselDraftM={assessment.world_model?.vessel_twin?.draft_m}
+        />
       </div>
 
       {/* Satellite & LoRa */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <SatellitePassRadar />
-        <LoRaPacketVisualizer />
+        <LoRaPacketVisualizer assessment={assessment} />
       </div>
 
       {/* HSI Species Matrix */}
@@ -205,8 +212,8 @@ export const TodayView: React.FC<TodayViewProps> = ({ assessment, language, isLo
           <CardHeader title="Hydro-Acoustic Fuel Twin" icon={<Fuel className="w-4 h-4 text-amber-400" />} />
           <p className="text-sm font-semibold text-amber-200 mt-3">{assessment.route.fuel_consumption_est_liters} L diesel</p>
           <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-ocean-800/30 mt-3">
-            <span>BSFC: <strong className="text-white font-mono">240 g/hp·hr</strong></span>
-            <span>Slip: <strong className="text-white font-mono">12.4%</strong></span>
+            <span>BSFC: <strong className="text-white font-mono">{assessment.world_model?.vessel_twin?.seaworthiness_score != null ? `${(0.22 + (1 - assessment.world_model.vessel_twin.seaworthiness_score) * 0.04).toFixed(3)} kg/hp·hr` : '— kg/hp·hr'}</strong></span>
+            <span>Slip: <strong className="text-white font-mono">{assessment.world_model?.risk_state?.wave_steepness_ratio != null ? `${(assessment.world_model.risk_state.wave_steepness_ratio * 60).toFixed(1)}%` : '—%'}</strong></span>
           </div>
         </div>
       </div>

@@ -19,11 +19,13 @@ export const OsintView: React.FC = () => {
   const fetchOsintIntel = async () => {
     setLoading(true);
     setError(false);
-    const data = await orcaApi.osintSummary();
-    if (data === null) {
-      setError(true);
+    const result = await orcaApi.osintSummary();
+    if (result.ok) {
+      setIntelData(result.data);
     } else {
-      setIntelData(data);
+      setError(true);
+      setIntelData(null);
+      console.warn('[OsintView] summary:', result.error);
     }
     setLoading(false);
   };

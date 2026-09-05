@@ -23,7 +23,7 @@ interface SystemDiagnosticsProps {
   assessment: TripAssessmentResponse | null;
 }
 
-const DEFAULT_NMEA = '$GPRMC,123519,A,1602.1500,N,07348.2100,E,08.2,240.0,010926,,,A*77';
+const DEFAULT_NMEA = '$GPRMC,,A,,,,,,,010926,,,A*6A';
 
 export const SystemDiagnostics: React.FC<SystemDiagnosticsProps> = ({ assessment }) => {
   const [satPasses, setSatPasses] = useState<{ satellite: string; orbit_type: string; next_pass_in_minutes: number; sensor: string }[]>([]);
@@ -32,8 +32,8 @@ export const SystemDiagnostics: React.FC<SystemDiagnosticsProps> = ({ assessment
   const [parsedNmea, setParsedNmea] = useState<{ checksum_valid: boolean; parsed_data: Record<string, unknown> } | null>(null);
   const [nmeaLoading, setNmeaLoading] = useState(false);
 
-  const [targetLat, setTargetLat] = useState('16.0365');
-  const [targetLon, setTargetLon] = useState('73.4671');
+  const [targetLat, setTargetLat] = useState('');
+  const [targetLon, setTargetLon] = useState('');
   const [cpaResult, setCpaResult] = useState<{
     initial_range_nm: number;
     cpa_nautical_miles: number;
@@ -51,59 +51,100 @@ export const SystemDiagnostics: React.FC<SystemDiagnosticsProps> = ({ assessment
   } | null>(null);
   const [engineLoading, setEngineLoading] = useState(false);
 
-  const ownLat = assessment?.coordinate.lat ?? 16.0215;
-  const ownLon = assessment?.coordinate.lon ?? 73.4821;
+  const ownLat = assessment?.coordinate.lat;
+  const ownLon = assessment?.coordinate.lon;
 
   const fetchSatellitePasses = async () => {
-    const data = await orcaApi.satellitePasses();
-    setSatPasses(data?.upcoming_overpasses ?? []);
+    const result = await orcaApi.satellitePasses();
+    if (result.ok) {
+      setSatPasses(result.data?.upcoming_overpasses ?? []);
+    } else {
+      setSatPasses([]);
+      console.warn('[SystemDiagnostics] satellite passes:', result.error);
+    }
     setSatLoaded(true);
   };
 
   const parseNmea = async () => {
     setNmeaLoading(true);
-    const data = await orcaApi.parseNmea(nmeaSentence);
-    setParsedNmea(data);
+    const result = await orcaApi.parseNmea(nmeaSentence);
+    if (result.ok) {
+      setParsedNmea(result.data);
+    } else {
+      setParsedNmea(null);
+      console.warn('[SystemDiagnostics] NMEA parse:', result.error);
+    }
     setNmeaLoading(false);
   };
 
   const testCpa = async () => {
+    if (ownLat == null || ownLon == null) {
+      console.warn('[SystemDiagnostics] CPA skipped: no live coordinate yet');
+      return;
+    }
     setCpaLoading(true);
-    const data = await orcaApi.cpa({
+    const tLat = parseFloat(targetLat);
+    const tLon = parseFloat(targetLon);
+    if (Number.isNaN(tLat) || Number.isNaN(tLon)) {
+      console.warn('[SystemDiagnostics] CPA skipped: target coordinates invalid');
+      setCpaLoading(false);
+      return;
+    }
+    const result = await orcaApi.cpa({
       own_lat: ownLat,
       own_lon: ownLon,
       own_speed_knots: 8.0,
       own_cog_deg: 240.0,
-      target_lat: parseFloat(targetLat) || 0,
-      target_lon: parseFloat(targetLon) || 0,
+      target_lat: tLat,
+      target_lon: tLon,
       target_speed_knots: 12.0,
       target_cog_deg: 160.0,
     });
-    setCpaResult(data);
+    if (result.ok) {
+      setCpaResult(result.data);
+    } else {
+      setCpaResult(null);
+      console.warn('[SystemDiagnostics] CPA:', result.error);
+    }
     setCpaLoading(false);
   };
 
   const testEngine = async () => {
     setEngineLoading(true);
     const distance = parseFloat(distKm);
-    const data = await orcaApi.engineMetrics({
+    // Pull wind + wave from the live assessment ocean_state so the
+    // engine simulator sees the conditions the vessel would actually
+    // face. Fall back to assessment vessel twin values when available.
+    const wind = assessment?.world_model?.ocean_state?.wind_gust_kmh
+      ?? assessment?.world_model?.ocean_state?.wind_speed_kmh
+      ?? 0;
+    const wave = assessment?.world_model?.ocean_state?.wave_height_m ?? 0;
+    const result = await orcaApi.engineMetrics({
       distance_km: Number.isNaN(distance) ? 30 : distance,
       vessel_speed_knots: 8.0,
       engine_hp: 9.9,
-      headwind_kmh: 15.0,
-      wave_height_m: 1.1,
+      headwind_kmh: wind,
+      wave_height_m: wave,
     });
-    setEngineResult(data);
+    if (result.ok) {
+      setEngineResult(result.data);
+    } else {
+      setEngineResult(null);
+      console.warn('[SystemDiagnostics] engine:', result.error);
+    }
     setEngineLoading(false);
   };
 
   useEffect(() => {
     fetchSatellitePasses();
-    parseNmea();
-    testCpa();
-    testEngine();
+    if (ownLat != null && ownLon == null) {
+      setTargetLat(ownLat.toFixed(4));
+    }
+    if (ownLon != null) {
+      setTargetLon(ownLon.toFixed(4));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [ownLat, ownLon]);
 
   return (
     <div className="space-y-4">

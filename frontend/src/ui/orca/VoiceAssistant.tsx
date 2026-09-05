@@ -348,14 +348,22 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
         const assessment = await onQuerySubmit(trimmed);
         const hazards =
           assessment.risk?.components?.map((c) => c.name).filter(Boolean) ?? [];
-        
-        // Synthesize dynamic answer tailored directly to the question asked
-        const responseText = synthesizeQueryResponse(
-          trimmed,
-          assessment,
-          language,
-          requestLabel,
-        );
+
+        // Prefer the backend's intent-aware plain_language_text (NLG
+        // service produces different openers per query type: waves,
+        // fuel, fish, cyclone, harbor, safety). Fall back to the
+        // client-side synthesizer only when the backend didn't return
+        // a tailored answer.
+        const backendText = assessment.explanation?.plain_language_text;
+        const responseText =
+          backendText && backendText.trim().length > 0
+            ? backendText
+            : synthesizeQueryResponse(
+                trimmed,
+                assessment,
+                language,
+                requestLabel,
+              );
 
         const orcaMsg: Message = {
           id: `o-${Date.now()}`,

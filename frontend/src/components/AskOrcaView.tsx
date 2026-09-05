@@ -5,7 +5,7 @@ import { fetchAssessNow } from '../utils/api';
 import { TripAssessmentResponse } from '../types';
 
 interface Message { id: string; sender: 'user' | 'orca'; text: string; timestamp: string; assessment?: TripAssessmentResponse; }
-interface AskOrcaViewProps { language: string; onQuerySubmit: (queryText: string) => void; latestExplanation?: string; }
+interface AskOrcaViewProps { language: string; onQuerySubmit: (queryText: string) => void; latestExplanation?: string; latestAssessment?: TripAssessmentResponse | null; }
 
 /* SVG Voice Waveform Visualizer */
 const VoiceWaveform: React.FC<{ isActive: boolean }> = ({ isActive }) => {
@@ -27,7 +27,7 @@ const VoiceWaveform: React.FC<{ isActive: boolean }> = ({ isActive }) => {
   );
 };
 
-export const AskOrcaView: React.FC<AskOrcaViewProps> = ({ language, onQuerySubmit, latestExplanation }) => {
+export const AskOrcaView: React.FC<AskOrcaViewProps> = ({ language, onQuerySubmit, latestExplanation, latestAssessment }) => {
   const [messages, setMessages] = useState<Message[]>([{
     id: 'welcome_msg', sender: 'orca',
     text: latestExplanation || 'नमस्कार! मी ओर्का सागरी एआय सहाय्यक आहे. समुद्रातील हवामान, मासेमारी क्षेत्र किंवा सुरक्षा याविषयी मला प्रश्न विचारा.',
@@ -62,7 +62,12 @@ export const AskOrcaView: React.FC<AskOrcaViewProps> = ({ language, onQuerySubmi
     setInputText(''); setIsLoading(true);
     try {
       onQuerySubmit(text);
-      const a = await fetchAssessNow(16.0500, 73.4667, 8.5, language);
+      // Use the vessel's actual current location (from latest assessment)
+      // rather than a hardcoded Malvan coordinate so answers reflect
+      // where the user actually is. Fall back to assessment coords if
+      // browser geolocation is unavailable.
+      const coords = latestAssessment?.coordinate ?? { lat: 16.0500, lon: 73.4667 };
+      const a = await fetchAssessNow(coords.lat, coords.lon, 8.5, language);
       setMessages((prev) => [...prev, { id: `orca_${Date.now()}`, sender: 'orca', text: a.explanation.plain_language_text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), assessment: a }]);
       speech.play(a.explanation.plain_language_text);
     } catch { setMessages((prev) => [...prev, { id: `orca_${Date.now()}`, sender: 'orca', text: '⚠️ क्षमस्व, सर्व्हरशी संपर्क साधताना अडचण आली.', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); }

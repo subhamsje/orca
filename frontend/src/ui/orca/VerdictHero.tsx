@@ -124,14 +124,14 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
     assessment.canonical_data_unavailable &&
     assessment.canonical_data_unavailable.length > 0;
 
-  const plainText = explanation?.plain_language_text ?? 'Sea conditions analyzed.';
-  const waveDesc = explanation?.wave_description ?? 'Wave metrics evaluated.';
-  const bestDock = assessment.economics?.best_docking_harbor?.split('(')[0]?.trim() ?? 'Primary Port';
-  const netProfit = assessment.economics?.max_expected_profit_inr ?? 24500;
-  const distKm = assessment.route?.total_distance_km ?? 14.2;
-  const execMs = assessment.telemetry?.execution_ms ?? 42;
-  const agentCount = assessment.telemetry?.services_triggered?.length ?? 16;
-  const sourceLabel = assessment.provenance?.source ?? 'ISRO & INCOIS Telemetry';
+  const plainText = explanation?.plain_language_text;
+  const waveDesc = explanation?.wave_description;
+  const bestDock = assessment.economics?.best_docking_harbor?.split('(')[0]?.trim();
+  const netProfit = assessment.economics?.max_expected_profit_inr;
+  const distKm = assessment.route?.total_distance_km;
+  const execMs = assessment.telemetry?.execution_ms;
+  const agentCount = assessment.telemetry?.services_triggered?.length;
+  const sourceLabel = assessment.provenance?.source;
 
   return (
     <section
@@ -223,8 +223,8 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
       {/* Plain-language explanation */}
       <div className="relative px-5 pb-3">
         <blockquote className="text-[12.5px] leading-relaxed text-slate-100 bg-ocean-1000/60 border border-ocean-800/80 px-3 py-2.5 rounded-xl">
-          <p className="selectable">“{plainText}”</p>
-          <p className="mt-1 text-[10px] text-cyan-300/80">{waveDesc}</p>
+          <p className="selectable">“{plainText ?? 'Sea conditions analyzed.'}”</p>
+          {waveDesc && <p className="mt-1 text-[10px] text-cyan-300/80">{waveDesc}</p>}
         </blockquote>
       </div>
 
@@ -232,17 +232,17 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
       <div className="relative px-5 pb-3 grid grid-cols-3 gap-2">
         <VitalStat
           label="Best Dock"
-          value={bestDock}
+          value={bestDock ?? '—'}
           accent="emerald"
         />
         <VitalStat
           label="Est. Net"
-          value={`₹${formatINR(netProfit)}`}
+          value={netProfit != null ? `₹${formatINR(netProfit)}` : '—'}
           accent="emerald"
         />
         <VitalStat
           label="Distance"
-          value={formatKm(distKm)}
+          value={distKm != null ? formatKm(distKm) : '—'}
           accent="cyan"
         />
       </div>
@@ -251,7 +251,7 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
       <div className="relative px-5 pb-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => speech.play(plainText)}
+          onClick={() => plainText && speech.play(plainText)}
           disabled={speech.isPlaying}
           className="inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-200 px-3 py-1.5 text-[11px] font-bold transition shadow-lg"
           aria-label="Read verdict aloud"
@@ -283,12 +283,24 @@ export const VerdictHero: React.FC<VerdictHeroProps> = ({
           <span className="dot bg-emerald-400 animate-pulse-soft" />
           ORCA-MultiObjective-v4.0
         </span>
-        <span className="text-ink-muted">·</span>
-        <span>
-          {typeof execMs === 'number' ? execMs.toFixed(0) : execMs} ms · {agentCount} agents
-        </span>
-        <span className="text-ink-muted">·</span>
-        <span>{sourceLabel}</span>
+        {execMs != null && (
+          <>
+            <span className="text-ink-muted">·</span>
+            <span>{execMs.toFixed(0)} ms</span>
+          </>
+        )}
+        {agentCount != null && (
+          <>
+            <span className="text-ink-muted">·</span>
+            <span>{agentCount} agents</span>
+          </>
+        )}
+        {sourceLabel && (
+          <>
+            <span className="text-ink-muted">·</span>
+            <span className="truncate max-w-[20rem]">{sourceLabel}</span>
+          </>
+        )}
       </div>
     </section>
   );

@@ -66,9 +66,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     return () => clearInterval(t);
   }, []);
 
-  const satCount = assessment?.explanation?.provenance_summary?.satellites?.length ?? 3;
-  const modelCount = assessment?.explanation?.provenance_summary?.ocean_models?.length ?? 2;
-  const freshness = assessment?.provenance?.data_freshness ?? 'LIVE (ISRO OCM-3)';
+  const satCount = assessment?.explanation?.provenance_summary?.satellites?.length;
+  const modelCount = assessment?.explanation?.provenance_summary?.ocean_models?.length;
+  const freshness = assessment?.provenance?.data_freshness;
 
   return (
     <header className="relative z-40 glass-strong border-b border-cyan-500/20">
@@ -185,13 +185,17 @@ export const TopBar: React.FC<TopBarProps> = ({
         </span>
         {assessment && (
           <>
-            <span className="text-cyan-300/60">
-              {satCount} sats · {modelCount} models
-            </span>
-            <span className="flex items-center gap-1.5 text-emerald-300/80">
-              <Radio className="w-3 h-3 animate-pulse" />
-              {freshness}
-            </span>
+            {(satCount != null || modelCount != null) && (
+              <span className="text-cyan-300/60">
+                {satCount != null ? `${satCount} sats` : '— sats'} · {modelCount != null ? `${modelCount} models` : '— models'}
+              </span>
+            )}
+            {freshness && (
+              <span className="flex items-center gap-1.5 text-emerald-300/80">
+                <Radio className="w-3 h-3 animate-pulse" />
+                {freshness}
+              </span>
+            )}
           </>
         )}
       </div>

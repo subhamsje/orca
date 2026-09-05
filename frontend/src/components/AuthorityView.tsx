@@ -10,32 +10,57 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { orcaApi, SARDriftResponse, SightingUpdateResponse, DarkFleetAnomaly } from '../utils/orcaApi';
+import { TripAssessmentResponse } from '../types';
 import { Button, Card, CardHeader, EmptyState, Spinner, StatusBadge } from '../ui';
 
-export const AuthorityView: React.FC = () => {
+interface AuthorityViewProps {
+  assessment: TripAssessmentResponse | null;
+  userId?: string;
+}
+
+export const AuthorityView: React.FC<AuthorityViewProps> = ({ assessment, userId }) => {
   const [sarResults, setSarResults] = useState<SARDriftResponse | null>(null);
   const [anomalies, setAnomalies] = useState<DarkFleetAnomaly[]>([]);
   const [loadingSar, setLoadingSar] = useState(false);
   const [loadingAnomalies, setLoadingAnomalies] = useState(false);
 
-  const [sightingLat, setSightingLat] = useState('16.0100');
-  const [sightingLon, setSightingLon] = useState('73.5000');
+  // SAR last-known position comes from the real assessment coordinate.
+  // No hardcoded Malvan fallback — if there's no assessment, wait for one.
+  const sarLat = assessment?.coordinate?.lat;
+  const sarLon = assessment?.coordinate?.lon;
+
+  const [sightingLat, setSightingLat] = useState('');
+  const [sightingLon, setSightingLon] = useState('');
   const [sightingConfidence, setSightingConfidence] = useState('0.90');
   const [bayesianResult, setBayesianResult] = useState<SightingUpdateResponse | null>(null);
   const [sightingError, setSightingError] = useState<string | null>(null);
 
-  const [overrideReason, setOverrideReason] = useState('High Swell Surge Advisory');
-  const [overrideAction, setOverrideAction] = useState('MANDATORY HARBOR RECALL');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideAction, setOverrideAction] = useState('');
   const [overrideLogged, setOverrideLogged] = useState(false);
 
   const triggerSarSimulation = async () => {
+    if (sarLat == null || sarLon == null) {
+      setSightingError('Awaiting live assessment before SAR drift can run.');
+      return;
+    }
     setLoadingSar(true);
-    const data = await orcaApi.sarDrift({
-      last_known_lat: 16.0215,
-      last_known_lon: 73.4821,
+    const result = await orcaApi.sarDrift({
+      last_known_lat: sarLat,
+      last_known_lon: sarLon,
       drift_hours: 6.0,
     });
-    if (data) setSarResults(data);
+    if (result.ok) {
+      setSarResults(result.data);
+      setSightingError(null);
+      // Seed sighting fields from the real drift centroid so the
+      // operator's next Bayesian resample starts from real values.
+      if (!sightingLat) setSightingLat(result.data.drift_centroid[0].toFixed(4));
+      if (!sightingLon) setSightingLon(result.data.drift_centroid[1].toFixed(4));
+    } else {
+      setSightingError(result.error);
+      setSarResults(null);
+    }
     setLoadingSar(false);
   };
 
@@ -48,42 +73,57 @@ export const AuthorityView: React.FC = () => {
       setSightingError('Latitude, longitude, and confidence must be numbers.');
       return;
     }
-    const data = await orcaApi.applySighting({
+    const result = await orcaApi.applySighting({
       sighting_lat: lat,
       sighting_lon: lon,
       confidence: conf,
     });
-    if (data) {
-      setBayesianResult(data);
+    if (result.ok) {
+      setBayesianResult(result.data);
     } else {
-      setSightingError('Could not reach the SAR service.');
+      setBayesianResult(null);
+      setSightingError(result.error);
     }
   };
 
   const fetchAnomalies = async () => {
     setLoadingAnomalies(true);
-    const data = await orcaApi.anomalies();
-    setAnomalies(data?.anomalies ?? []);
+    const result = await orcaApi.anomalies();
+    if (result.ok) {
+      setAnomalies(result.data?.anomalies ?? []);
+    } else {
+      setAnomalies([]);
+      console.warn('[AuthorityView] anomalies:', result.error);
+    }
     setLoadingAnomalies(false);
   };
 
   const submitGovernanceOverride = async () => {
+    if (!overrideReason.trim() || !overrideAction.trim()) {
+      setSightingError('Both reason and action must be filled before logging.');
+      return;
+    }
     const result = await orcaApi.governanceOverride({
-      user_id: 'CG-COMMANDER-01',
+      user_id: userId ?? `session-${Date.now()}`,
       role: 'Coast Guard Command Officer',
       reason: overrideReason,
       override_action: overrideAction,
     });
-    if (result !== null) {
+    if (result.ok) {
       setOverrideLogged(true);
       window.setTimeout(() => setOverrideLogged(false), 4000);
+    } else {
+      setSightingError(`Override failed: ${result.error}`);
     }
   };
 
   useEffect(() => {
-    triggerSarSimulation();
+    if (sarLat != null && sarLon != null) {
+      triggerSarSimulation();
+    }
     fetchAnomalies();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sarLat, sarLon]);
 
   return (
     <div className="space-y-4">

@@ -127,8 +127,18 @@ class MultiAgentOrchestrator:
         osint_res = osint_service.correlate_sector_intelligence(lat, lon, radius_km=30.0)
 
         # Step 9: Natural Language Synthesizer (NLG Voice)
+        # Inject active alerts and economics into safety_eval so the
+        # intent-aware opener can answer cyclone / harbor questions
+        # directly from real values.
+        safety_for_nlg = dict(safety_res)
+        safety_for_nlg["active_alerts"] = alerts_res.get("active_alerts", []) if isinstance(alerts_res, dict) else []
+        safety_for_nlg["economics"] = {
+            "best_docking_harbor": econ_res.get("best_docking_harbor"),
+            "max_expected_profit_inr": econ_res.get("max_expected_profit_inr"),
+        }
         nlg_res = nlg_service.synthesize_explanation(
-            safety_res, pfz_res, legacy_weather, legacy_wave, route_res, language
+            safety_for_nlg, pfz_res, legacy_weather, legacy_wave, route_res,
+            language, query_text=query_text,
         )
 
         # Step 10: Persistent SQLite Audit Log Storage
