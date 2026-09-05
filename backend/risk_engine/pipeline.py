@@ -32,10 +32,53 @@ from risk_engine import (
 from risk_engine.replay import assessment_store
 from services.alerts_service import alerts_service
 from services.geofence_service import geofence_service
+from services.nlg_service import nlg_service
 from utils.h3_spatial import haversine_distance_km
 
 
 log = logging.getLogger("orca.assess_now")
+
+
+def _canonical_to_legacy_weather(canonical) -> dict:
+    out: dict = {"data_freshness": "Live"}
+    rec = canonical.get("wind_speed")
+    if rec and getattr(rec, "value", None) is not None:
+        out["wind_speed_kmh"] = rec.value * 3.6 if rec.unit == "m/s" else rec.value
+    rec = canonical.get("wind_gust")
+    if rec and getattr(rec, "value", None) is not None:
+        out["wind_gust_kmh"] = rec.value * 3.6 if rec.unit == "m/s" else rec.value
+    rec = canonical.get("air_pressure")
+    if rec and getattr(rec, "value", None) is not None:
+        out["air_pressure_hpa"] = rec.value
+    rec = canonical.get("air_temperature")
+    if rec and getattr(rec, "value", None) is not None:
+        out["air_temperature_c"] = rec.value
+    rec = canonical.get("visibility")
+    if rec and getattr(rec, "value", None) is not None:
+        out["visibility_km"] = rec.value
+    rec = canonical.get("cloud_cover")
+    if rec and getattr(rec, "value", None) is not None:
+        out["cloud_cover_pct"] = rec.value
+    rec = canonical.get("precipitation")
+    if rec and getattr(rec, "value", None) is not None:
+        out["precipitation_mm"] = rec.value
+    return out
+
+
+def _canonical_to_legacy_wave(canonical) -> dict:
+    rec = canonical.get("wave_height")
+    if rec and getattr(rec, "value", None) is not None:
+        out = {"significant_wave_height_m": rec.value}
+    else:
+        out = {}
+    rec = canonical.get("wave_period")
+    if rec and getattr(rec, "value", None) is not None:
+        out["swell_period_sec"] = rec.value
+    rec = canonical.get("swell_wave_height")
+    if rec and getattr(rec, "value", None) is not None:
+        out["swell_wave_height_m"] = rec.value
+    out["data_freshness"] = "Live"
+    return out
 
 
 def _default_vessel(length_m: float, heading_deg: float = 0.0) -> VesselProfile:
@@ -68,6 +111,28 @@ async def assess_now(
 
     # 4. Risk engine
     result = compute_risk(state, vessel, alerts=alerts, geofence=geofence)
+
+    # 4b. Intent-aware NLG so the frontend always has a tailored
+    # `plain_language_text` (waves / fuel / fish / cyclone / harbor /
+    # safety). Without this, the UI shows stale or empty text.
+    safety_for_nlg = {
+        "risk_score": result.risk_score,
+        "verdict_label": result.risk_label,
+        "override_active": bool(result.circuit_breaker and result.circuit_breaker.triggered),
+        "override_reason": (
+            result.circuit_breaker.forced_label if result.circuit_breaker else None
+        ),
+        "active_alerts": alerts.get("active_alerts", []) if isinstance(alerts, dict) else [],
+        "economics": {},  # assess-now does not run economics
+    }
+    legacy_weather = _canonical_to_legacy_weather(canonical)
+    legacy_wave = _canonical_to_legacy_wave(canonical)
+    pfz_stub = {"top_grounds": [], "species_matrix": {}}
+    route_stub = {}  # assess-now has no route
+    explanation = nlg_service.synthesize_explanation(
+        safety_for_nlg, pfz_stub, legacy_weather, legacy_wave,
+        route_stub, language, query_text=query_text,
+    )
 
     # 5. Optional route risk
     route_block: Optional[Dict[str, Any]] = None
@@ -128,6 +193,7 @@ async def assess_now(
         "alerts": alerts,
         "geofence": geofence,
         "route": route_block,
+        "explanation": explanation,
         "execution_ms": round((time.time() - t0) * 1000, 1),
     }
 

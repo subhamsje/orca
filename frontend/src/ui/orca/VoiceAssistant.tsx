@@ -73,113 +73,7 @@ const QUICK_PROMPTS_IN = [
   'आज कोणत्या बंदरात भाव जास्त आहे?',
   '३० किमी प्रवासासाठी डिझेल किती लागेल?',
   'जवळपास चक्रीवादळाचा इशारा आहे का?',
-];
-
-function synthesizeQueryResponse(
-  query: string,
-  assessment: TripAssessmentResponse,
-  language: string,
-  locationLabel?: string,
-): string {
-  const q = query.toLowerCase();
-  const ocean = assessment.world_model?.ocean_state;
-  const risk = assessment.risk_score;
-  const verdict = assessment.verdict;
-  const wave = ocean?.wave_height_m ?? 1.25;
-  const wavePeriod = ocean?.wave_period_s ?? 6.8;
-  const swellPeriod = ocean?.swell_wave_period_s ?? wavePeriod;
-  const wind = ocean?.wind_speed_kmh ?? 18.0;
-  const gust = ocean?.wind_gust_kmh ?? 24.0;
-  const sst = ocean?.sst_c ?? 28.6;
-  const pressure = ocean?.air_pressure_hpa ?? 1010.0;
-  const harbor = locationLabel || 'current harbor';
-  const bestHarbor = assessment.economics?.best_docking_harbor || 'Mirkarwada Harbor (Ratnagiri)';
-  const topSpecies = Object.keys(assessment.species_matrix || {})[0] || 'Bangda (Indian Mackerel)';
-  const fuelEst = (30 * 0.42).toFixed(1);
-  const fuelCost = Math.round(Number(fuelEst) * 98.5);
-
-  const isMr = language === 'Marathi';
-  const isHi = language === 'Hindi';
-  const isGu = language === 'Gujarati';
-  const isTa = language === 'Tamil';
-
-  // 1. Wave / Swell query
-  if (q.includes('wave') || q.includes('swell') || q.includes('लाट') || q.includes('लहर') || q.includes('મોજા') || q.includes('அலை')) {
-    if (isMr) {
-      return `${harbor} जवळ सध्या लाटांची उंची ${wave.toFixed(1)} मीटर असून दोलन काळ ${swellPeriod.toFixed(1)} सेकंद आहे. समुद्राची स्थिती ${wave > 2.0 ? 'धोकादायक' : 'शांत'} आहे.`;
-    }
-    if (isHi) {
-      return `${harbor} के पास लहरों की ऊंचाई ${wave.toFixed(1)} मीटर और दोलन काल ${swellPeriod.toFixed(1)} सेकंड है। समुद्र ${wave > 2.0 ? 'अशांत' : 'अनुकूल'} है।`;
-    }
-    if (isGu) {
-      return `${harbor} પાસે મોજાંની ઊંચાઈ ${wave.toFixed(1)} મીટર અને સ્વેલ ${swellPeriod.toFixed(1)} સેકન્ડ છે.`;
-    }
-    if (isTa) {
-      return `${harbor} அருகில் அலை உயரம் ${wave.toFixed(1)} மீட்டர் மற்றும் அலை காலம் ${swellPeriod.toFixed(1)} வினாடிகள்.`;
-    }
-    return `Current wave height at ${harbor} is ${wave.toFixed(1)} meters with a ${swellPeriod.toFixed(1)}s swell period. Sea conditions are ${wave > 2.0 ? 'rough' : 'favorable'}.`;
-  }
-
-  // 2. Best Harbor / Market / Price / Auction / Selling query
-  if (q.includes('harbor') || q.includes('market') || q.includes('price') || q.includes('sell') || q.includes('rate') || q.includes('भाव') || q.includes('बाजार') || q.includes('बंदर') || q.includes('किंमत') || q.includes('दाम') || q.includes('કિંમત')) {
-    if (isMr) {
-      return `आज सर्वात जास्त नफा ${bestHarbor} मध्ये मिळत आहे. बांगडा ₹215/किलो आणि सुरमई ₹730/किलो दराने विकली जात असून अंदाजे ₹${(assessment.economics?.max_expected_profit_inr ?? 27800).toLocaleString()} चा निव्वळ नफा अपेक्षित आहे.`;
-    }
-    if (isHi) {
-      return `आज सबसे अच्छा भाव ${bestHarbor} में मिल रहा है। बांगड़ा ₹215/किलो और सुरमई ₹730/किलो है, जिससे लगभग ₹${(assessment.economics?.max_expected_profit_inr ?? 27800).toLocaleString()} का मुनाफा मिल सकता है।`;
-    }
-    return `Today's best wholesale auction center is ${bestHarbor}. Bangda is trading at ₹215/kg and Surmai at ₹730/kg, yielding an estimated net profit of ₹${(assessment.economics?.max_expected_profit_inr ?? 27800).toLocaleString()}.`;
-  }
-
-  // 3. Fuel / Diesel / Mileage query
-  if (q.includes('fuel') || q.includes('diesel') || q.includes('डिझेल') || q.includes('डीजल') || q.includes('इंधन') || q.includes('किलोमीटर') || q.includes('km') || q.includes('३०') || q.includes('30')) {
-    if (isMr) {
-      return `तुमच्या 8.5 मी बोटीसाठी 30 किमी प्रवासात सुमारे ${fuelEst} लिटर डिझेल लागेल (₹98.50/L दराने अंदाजे खर्च ₹${fuelCost}).`;
-    }
-    if (isHi) {
-      return `आपकी 8.5 मीटर नाव के लिए 30 किमी यात्रा में लगभग ${fuelEst} लीटर डीजल लगेगा (₹98.50/L पर कुल खर्च लगभग ₹${fuelCost}).`;
-    }
-    return `For an 8.5m craft, a 30 km voyage will burn approximately ${fuelEst} Liters of diesel (estimated cost ₹${fuelCost} at ₹98.50/L).`;
-  }
-
-  // 4. Cyclone / Squall / Storm / Alert query
-  if (q.includes('cyclone') || q.includes('storm') || q.includes('alert') || q.includes('चक्रीवादळ') || q.includes('तूफान') || q.includes('इशारा') || q.includes('चेतावणी') || q.includes('વાવાઝોડું')) {
-    if (isMr) {
-      return `IMD आणि INCOIS कडून या क्षेत्रासाठी कोणताही सक्रिय चक्रीवादळाचा इशारा नाही. हवेचा दाब ${pressure.toFixed(0)} hPa असून वारे ${wind.toFixed(0)} किमी/तास वेगाने वाहत आहेत.`;
-    }
-    if (isHi) {
-      return `IMD और INCOIS द्वारा इस क्षेत्र में कोई सक्रिय चक्रवात चेतावनी नहीं है। वायुदाब ${pressure.toFixed(0)} hPa और हवाएं ${wind.toFixed(0)} किमी/घंटा हैं।`;
-    }
-    return `No active cyclone warnings issued by IMD/INCOIS for this sector. Barometric pressure is normal at ${pressure.toFixed(0)} hPa with wind speeds around ${wind.toFixed(0)} km/h.`;
-  }
-
-  // 5. Fish / Species / PFZ query
-  if (q.includes('fish') || q.includes('species') || q.includes('pfz') || q.includes('मासे') || q.includes('मछली') || q.includes('बांगडा') || q.includes('सुरमई') || q.includes('पापलेट') || q.includes('તારલી')) {
-    if (isMr) {
-      return `उपग्रह तापमानाच्या आधारे (${sst.toFixed(1)}°C) किनाऱ्यापासून 14 किमी अंतरावर ${topSpecies} चे मुबलक प्रमाण (HSI 85) आढळले आहे.`;
-    }
-    if (isHi) {
-      return `उपग्रह तापमान (${sst.toFixed(1)}°C) के आधार पर तट से 14 किमी दूर ${topSpecies} की अच्छी संभावना (HSI 85) है।`;
-    }
-    return `Satellite thermal front data (${sst.toFixed(1)}°C) indicates high pelagic suitability for ${topSpecies} (HSI 85) located 14.2 km offshore.`;
-  }
-
-  // 6. General Safety / Departure query
-  if (q.includes('safe') || q.includes('go') || q.includes('सुरक्षित') || q.includes('जाणे') || q.includes('जाना') || q.includes('સલામત')) {
-    if (isMr) {
-      return `सध्याचा जोखीम निर्देशांक ${risk}/100 आहे. निर्णय: ${verdict}। लाटा ${wave.toFixed(1)} मी आणि वारे ${wind.toFixed(0)} किमी/तास आहेत.`;
-    }
-    if (isHi) {
-      return `वर्तमान जोखिम स्कोर ${risk}/100 है। निर्णय: ${verdict}। लहरें ${wave.toFixed(1)} मी और हवाएं ${wind.toFixed(0)} किमी/घंटा हैं।`;
-    }
-    return `Current safety risk score is ${risk}/100. Verdict: ${verdict}. Waves are ${wave.toFixed(1)}m and winds are ${wind.toFixed(0)} km/h.`;
-  }
-
-  // Default fallback: return assessment's plain language text
-  return assessment.explanation?.plain_language_text || `Current conditions: Waves ${wave.toFixed(1)}m, Winds ${wind.toFixed(0)} km/h, Risk ${risk}/100.`;
-}
-
-export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
+];export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   language,
   lat,
   lon,
@@ -349,21 +243,18 @@ export const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
         const hazards =
           assessment.risk?.components?.map((c) => c.name).filter(Boolean) ?? [];
 
-        // Prefer the backend's intent-aware plain_language_text (NLG
-        // service produces different openers per query type: waves,
-        // fuel, fish, cyclone, harbor, safety). Fall back to the
-        // client-side synthesizer only when the backend didn't return
-        // a tailored answer.
+        // The backend NLG service ALWAYS produces an intent-aware
+        // `plain_language_text` (waves / fuel / fish / cyclone / harbor
+        // / safety openers in the user's chosen language). The legacy
+        // client-side synthesizer was removed because it contained
+        // hardcoded ₹215/kg, ₹730/kg, HSI 85 numbers that the user kept
+        // seeing. Show a "DATA UNAVAILABLE" banner only if the backend
+        // genuinely returned no transcript (e.g. full network failure).
         const backendText = assessment.explanation?.plain_language_text;
         const responseText =
           backendText && backendText.trim().length > 0
             ? backendText
-            : synthesizeQueryResponse(
-                trimmed,
-                assessment,
-                language,
-                requestLabel,
-              );
+            : '⚠️ Unable to reach ocean intelligence service. Try again.';
 
         const orcaMsg: Message = {
           id: `o-${Date.now()}`,
